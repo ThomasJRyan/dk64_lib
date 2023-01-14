@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dk64_lib"
+version = "0.0.1"
+
+[tool.setuptools]
+packages = ["dk64_lib"]
+package-dir = {"" = "dk64_lib_src"}
+
+# [tool.setuptools.package-dir]
+# dk64_lib = "dk64_lib_src"
+
+[tool.setup.packages.find]
+where = ['dk64_lib_src']
