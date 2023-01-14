@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 
 @dataclass(kw_only=True)
-class BaseDataTable(ABC):
+class BaseData(ABC):
     _raw_data: bytes
     offset: int
     size: int
