@@ -7,7 +7,7 @@ from tempfile import TemporaryFile
 
 from typing import Literal, Generator
 
-from dk64_lib.tables import TextureDataTable, TextDataTable
+from dk64_lib.data_types import TextureData, TextData
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
@@ -40,37 +40,6 @@ class Rom:
     def __del__(self):
         """Closes the file on deletion"""
         self.rom_fh.close()
-
-    def _extract_table_data(self, start: int, size: int) -> Generator[dict, None, None]:
-        """An internal generator for extracting the data that a table points to
-
-        Args:
-            start (int): Starting offset of the table
-            size (int): Size of the table
-
-        Yields:
-            Generator[dict, None, None]: The data the table entry points to
-        """
-        for entry in range(size):
-            entry_start = self.pointer_table_offset + (
-                get_long(self.rom_fh, start + (entry * 4)) & 0x7FFFFFFF
-            )
-            entry_finish = self.pointer_table_offset + (
-                get_long(
-                    self.rom_fh,
-                )
-                & 0x7FFFFFFF
-            )
-            entry_size = entry_finish - entry_start
-            if not entry_size:
-                continue
-            table_data = get_bytes(self.rom_fh, entry_size, entry_start)
-            indic = get_short(self.rom_fh)
-            if indic == 0x1F8B:
-                table_data = zlib.decompress(table_data, (15 + 32))
-            if not table_data:
-                continue
-            yield dict(_raw_data=table_data, offset=entry_start, size=entry_size)
 
     @property
     def release_or_kiosk(self) -> Literal["release", "kiosk"]:
@@ -115,7 +84,7 @@ class Rom:
         return self.REGIONS_AND_POINTER_TABLE_OFFSETS[region][1]
 
     @property
-    def text_tables(self) -> list[TextDataTable]:
+    def text_tables(self) -> list[TextData]:
         """Returns a list of all text data
 
         Returns:
@@ -123,6 +92,37 @@ class Rom:
         """
         return [text_data for text_data in self.generate_text_data()]
 
+    def _extract_table_data(self, start: int, size: int) -> Generator[dict, None, None]:
+        """An internal generator for extracting the data that a table points to
+
+        Args:
+            start (int): Starting offset of the table
+            size (int): Size of the table
+
+        Yields:
+            Generator[dict, None, None]: The data the table entry points to
+        """
+        for entry in range(size):
+            entry_start = self.pointer_table_offset + (
+                get_long(self.rom_fh, start + (entry * 4)) & 0x7FFFFFFF
+            )
+            entry_finish = self.pointer_table_offset + (
+                get_long(
+                    self.rom_fh,
+                )
+                & 0x7FFFFFFF
+            )
+            entry_size = entry_finish - entry_start
+            if not entry_size:
+                continue
+            indic = get_short(self.rom_fh, entry_start)
+            table_data = get_bytes(self.rom_fh, entry_size, entry_start)
+            if indic == 0x1F8B:
+                table_data = zlib.decompress(table_data, (15 + 32))
+            if not table_data:
+                continue
+            yield dict(_raw_data=table_data, offset=entry_start, size=entry_size)
+            
     def generate_rom_table_data(self, tables: list[int]) -> Generator[dict, None, None]:
         """A generator that iterates through the various table data in the ROM
 
@@ -144,20 +144,20 @@ class Rom:
             for data in self._extract_table_data(table_start, table_size):
                 yield data
 
-    def generate_texture_data(self) -> Generator[TextureDataTable, None, None]:
+    def generate_texture_data(self) -> Generator[TextureData, None, None]:
         """A generator for fetching the texture data
 
         Yields:
             Generator[bytes, None, None]: A single piece of texture data
         """
         for table_data in self.generate_rom_table_data([7, 14, 25]):
-            yield TextureDataTable(**table_data)
+            yield TextureData(**table_data)
 
-    def generate_text_data(self) -> Generator[TextDataTable, None, None]:
+    def generate_text_data(self) -> Generator[TextData, None, None]:
         """A generator for fetching the text data
 
         Yields:
             Generator[bytes, None, None]: A single piece of texture data
         """
         for table_data in self.generate_rom_table_data([12]):
-            yield TextDataTable(**table_data, _release_or_kiosk=self.release_or_kiosk)
+            yield TextData(**table_data, _release_or_kiosk=self.release_or_kiosk)
