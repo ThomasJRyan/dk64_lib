@@ -1,3 +1,6 @@
 venv/
 dk64_lib.egg-info/
 __pycache__/
+*.n64
+*.z64
+*.v64
