@@ -8,9 +8,3 @@ version = "0.0.1"
 
 [tool.setuptools]
 packages = ["dk64_lib"]
-
-# [tool.setuptools.package-dir]
-# dk64_lib = "dk64_lib_src"
-
-[tool.setup.packages.find]
-where = ['dk64_lib_src']
