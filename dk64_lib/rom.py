@@ -152,18 +152,3 @@ class Rom():
         """
         for table_data in self.generate_rom_table_data([12]):
             yield TextDataTable(**table_data, _release_or_kiosk = self.release_or_kiosk)
-        
-    def get_dump_path(self, folder: str = None) -> Path:
-        # ! This is better suited to a private function, might even be unnecessary
-        """Gets the file dump path
-
-        Args:
-            folder (str, optional): Sub-folder to work with. Defaults to None.
-
-        Returns:
-            Path: Dump path
-        """
-        if folder:
-            return self.rom_path.parent / folder / self.region
-        return self.rom_path.parent / self.region
-        
