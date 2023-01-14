@@ -1,7 +1,9 @@
 from io import FileIO
 
 
-def get_bytes(fh: FileIO, byte_count: int, position: int | None = None, keep_last_pos = False):
+def get_bytes(
+    fh: FileIO, byte_count: int, position: int | None = None, keep_last_pos=False
+):
     """Reads bytes and returns them
 
     Args:
@@ -22,7 +24,8 @@ def get_bytes(fh: FileIO, byte_count: int, position: int | None = None, keep_las
         fh.seek(last_pos)
     return _bytes
 
-def get_char(fh: FileIO, position: int | None = None, keep_last_pos = False) -> int:
+
+def get_char(fh: FileIO, position: int | None = None, keep_last_pos=False) -> int:
     """Reads one byte and returns it as an integer
 
     Args:
@@ -35,7 +38,8 @@ def get_char(fh: FileIO, position: int | None = None, keep_last_pos = False) -> 
     """
     return int.from_bytes(get_bytes(fh, 1, position, keep_last_pos), "big")
 
-def get_short(fh: FileIO, position: int | None = None, keep_last_pos = False) -> int:
+
+def get_short(fh: FileIO, position: int | None = None, keep_last_pos=False) -> int:
     """Reads two bytes and returns them as an integer
 
     Args:
@@ -48,7 +52,8 @@ def get_short(fh: FileIO, position: int | None = None, keep_last_pos = False) ->
     """
     return int.from_bytes(get_bytes(fh, 2, position, keep_last_pos), "big")
 
-def get_long(fh: FileIO, position: int | None = None, keep_last_pos = False) -> int:
+
+def get_long(fh: FileIO, position: int | None = None, keep_last_pos=False) -> int:
     """Reads four bytes and returns them as an integer
 
     Args:

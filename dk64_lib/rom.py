@@ -11,13 +11,13 @@ from dk64_lib.tables import TextureDataTable, TextDataTable
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
-class Rom():  
+class Rom:
     REGIONS_AND_POINTER_TABLE_OFFSETS = {
-        0x45: ('us', 0x101C50),
-        0x50: ('pal', 0x1038D0),
-        0x4A: ('jp', 0x1039C0),
+        0x45: ("us", 0x101C50),
+        0x50: ("pal", 0x1038D0),
+        0x4A: ("jp", 0x1039C0),
     }
-        
+
     def __init__(self, rom_path: str):
         """Class representation of a DK64 ROM
 
@@ -25,20 +25,22 @@ class Rom():
             rom_path (str): Path to ROM file
         """
         self.rom_path = Path(rom_path).resolve()
-        
+
         # Copy ROM data to a temporary file
-        with open(rom_path, 'rb') as rom_file:
+        with open(rom_path, "rb") as rom_file:
             self.rom_fh = TemporaryFile()
             self.rom_fh.write(rom_file.read())
             self.rom_fh.seek(0)
-            
+
         endianness = int.from_bytes(self.rom_fh.read(1), "big")
-        assert endianness == 0x80, "ROM is little endian. Convert to big endian and re-run"
-            
+        assert (
+            endianness == 0x80
+        ), "ROM is little endian. Convert to big endian and re-run"
+
     def __del__(self):
         """Closes the file on deletion"""
         self.rom_fh.close()
-    
+
     def _extract_table_data(self, start: int, size: int) -> Generator[dict, None, None]:
         """An internal generator for extracting the data that a table points to
 
@@ -50,8 +52,15 @@ class Rom():
             Generator[dict, None, None]: The data the table entry points to
         """
         for entry in range(size):
-            entry_start = self.pointer_table_offset + (get_long(self.rom_fh, start + (entry * 4)) & 0x7FFFFFFF)
-            entry_finish = self.pointer_table_offset + (get_long(self.rom_fh, ) & 0x7FFFFFFF)
+            entry_start = self.pointer_table_offset + (
+                get_long(self.rom_fh, start + (entry * 4)) & 0x7FFFFFFF
+            )
+            entry_finish = self.pointer_table_offset + (
+                get_long(
+                    self.rom_fh,
+                )
+                & 0x7FFFFFFF
+            )
             entry_size = entry_finish - entry_start
             if not entry_size:
                 continue
@@ -61,14 +70,10 @@ class Rom():
                 table_data = zlib.decompress(table_data, (15 + 32))
             if not table_data:
                 continue
-            yield dict(
-                _raw_data=table_data,
-                offset=entry_start,
-                size=entry_size
-            )
-        
+            yield dict(_raw_data=table_data, offset=entry_start, size=entry_size)
+
     @property
-    def release_or_kiosk(self) -> Literal['release', 'kiosk']:
+    def release_or_kiosk(self) -> Literal["release", "kiosk"]:
         """Read the release/kiosk flag to check game version
 
         Returns:
@@ -76,11 +81,11 @@ class Rom():
         """
         release_or_kiosk = get_char(self.rom_fh, 0x3D, keep_last_pos=True)
         if release_or_kiosk == 0x50:
-            return 'kiosk'
-        return 'release'
-    
+            return "kiosk"
+        return "release"
+
     @property
-    def region(self) -> Literal['us', 'pal', 'jp', 'kiosk']:
+    def region(self) -> Literal["us", "pal", "jp", "kiosk"]:
         """Read the region flag and return which region the ROM is
 
         Raises:
@@ -90,13 +95,13 @@ class Rom():
             Literal['us', 'pal', 'jp', 'kiosk']: Game's region
         """
         region = get_char(self.rom_fh, 0x3E, keep_last_pos=True)
-        if self.release_or_kiosk == 'kiosk':
-            return 'kiosk'
+        if self.release_or_kiosk == "kiosk":
+            return "kiosk"
         try:
             return self.REGIONS_AND_POINTER_TABLE_OFFSETS[region][0]
         except KeyError:
             raise KeyError(f"This region ({region}) is invalid")
-    
+
     @property
     def pointer_table_offset(self) -> Literal[0x101C50, 0x1038D0, 0x1039C0, 0x1A7C20]:
         """Gets the pointer table offset for the ROM
@@ -105,10 +110,10 @@ class Rom():
             Literal[0x101C50, 0x1038D0, 0x1039C0, 0x1A7C20]: Pointer offset
         """
         region = get_char(self.rom_fh, 0x3E, keep_last_pos=True)
-        if self.release_or_kiosk == 'kiosk':
+        if self.release_or_kiosk == "kiosk":
             return 0x1A7C20
         return self.REGIONS_AND_POINTER_TABLE_OFFSETS[region][1]
-    
+
     @property
     def text_tables(self) -> list[TextDataTable]:
         """Returns a list of all text data
@@ -117,7 +122,7 @@ class Rom():
             list[TextData]: The game's text data
         """
         return [text_data for text_data in self.generate_text_data()]
-    
+
     def generate_rom_table_data(self, tables: list[int]) -> Generator[dict, None, None]:
         """A generator that iterates through the various table data in the ROM
 
@@ -128,13 +133,17 @@ class Rom():
             Generator[dict, None, None]: The table data in bytes
         """
         for table_offset in tables:
-            if self.release_or_kiosk == 'kiosk':
+            if self.release_or_kiosk == "kiosk":
                 table_offset -= 1
-            table_size = get_long(self.rom_fh, self.pointer_table_offset + (32 * 4) + (table_offset * 4))
-            table_start = self.pointer_table_offset + get_long(self.rom_fh, self.pointer_table_offset + (table_offset * 4))
+            table_size = get_long(
+                self.rom_fh, self.pointer_table_offset + (32 * 4) + (table_offset * 4)
+            )
+            table_start = self.pointer_table_offset + get_long(
+                self.rom_fh, self.pointer_table_offset + (table_offset * 4)
+            )
             for data in self._extract_table_data(table_start, table_size):
                 yield data
-        
+
     def generate_texture_data(self) -> Generator[TextureDataTable, None, None]:
         """A generator for fetching the texture data
 
@@ -143,7 +152,7 @@ class Rom():
         """
         for table_data in self.generate_rom_table_data([7, 14, 25]):
             yield TextureDataTable(**table_data)
-            
+
     def generate_text_data(self) -> Generator[TextDataTable, None, None]:
         """A generator for fetching the text data
 
@@ -151,4 +160,4 @@ class Rom():
             Generator[bytes, None, None]: A single piece of texture data
         """
         for table_data in self.generate_rom_table_data([12]):
-            yield TextDataTable(**table_data, _release_or_kiosk = self.release_or_kiosk)
+            yield TextDataTable(**table_data, _release_or_kiosk=self.release_or_kiosk)
