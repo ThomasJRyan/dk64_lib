@@ -80,7 +80,7 @@ class TextData(BaseData):
             self._parse_data(data_file)
 
     def __repr__(self):
-        return f"TextDataTable({self.offset=}, {self.size=}, # of sentences={len(self.text_lines)})"
+        return f"TextDataTable({self.offset=}, {self.size=}, # of lines={len(self.text_lines)})"
 
     def _generate_text(
         self,
