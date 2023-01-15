@@ -132,7 +132,6 @@ class Rom:
         Yields:
             Generator[dict, None, None]: The table data in bytes
         """
-        import pudb; pu.db
         for table_offset in tables:
             if self.release_or_kiosk == "kiosk":
                 table_offset -= 1
