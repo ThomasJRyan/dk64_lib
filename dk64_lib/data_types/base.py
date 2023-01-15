@@ -7,6 +7,7 @@ class BaseData(ABC):
     _raw_data: bytes
     offset: int
     size: int
+    was_compressed: bool
 
     data_type: str = None
 

@@ -7,7 +7,7 @@ from tempfile import TemporaryFile
 
 from typing import Literal, Generator
 
-from dk64_lib.data_types import TextureData, TextData
+from dk64_lib.data_types import TextureData, TextData, CutsceneData, GeometryData
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
@@ -121,7 +121,7 @@ class Rom:
                 table_data = zlib.decompress(table_data, (15 + 32))
             if not table_data:
                 continue
-            yield dict(_raw_data=table_data, offset=entry_start, size=entry_size)
+            yield dict(_raw_data=table_data, offset=entry_start, size=entry_size, was_compressed=True if indic == 0x1F8B else False)
             
     def generate_rom_table_data(self, tables: list[int]) -> Generator[dict, None, None]:
         """A generator that iterates through the various table data in the ROM
@@ -132,6 +132,7 @@ class Rom:
         Yields:
             Generator[dict, None, None]: The table data in bytes
         """
+        import pudb; pu.db
         for table_offset in tables:
             if self.release_or_kiosk == "kiosk":
                 table_offset -= 1
@@ -148,7 +149,7 @@ class Rom:
         """A generator for fetching the texture data
 
         Yields:
-            Generator[bytes, None, None]: A single piece of texture data
+            Generator[TextureData, None, None]: A single piece of texture data
         """
         for table_data in self.generate_rom_table_data([7, 14, 25]):
             yield TextureData(**table_data)
@@ -157,7 +158,25 @@ class Rom:
         """A generator for fetching the text data
 
         Yields:
-            Generator[bytes, None, None]: A single piece of texture data
+            Generator[TextData, None, None]: A single piece of texture data
         """
         for table_data in self.generate_rom_table_data([12]):
             yield TextData(**table_data, _release_or_kiosk=self.release_or_kiosk)
+            
+    def generate_cutscene_data(self) -> Generator[CutsceneData, None, None]:
+        """A generator for fetching the cutscene data
+
+        Yields:
+            Generator[CutsceneData, None, None]: A single piece of texture data
+        """
+        for table_data in self.generate_rom_table_data([8]):
+            yield CutsceneData(**table_data)
+
+    def generate_geometry_data(self) -> Generator[GeometryData, None, None]:
+        """A generator for fetching the cutscene data
+
+        Yields:
+            Generator[GeometryData, None, None]: A single piece of texture data
+        """
+        for table_data in self.generate_rom_table_data([1]):
+            yield GeometryData(**table_data)
