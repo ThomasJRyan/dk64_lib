@@ -1,5 +1,4 @@
-
-class Vertex():
+class Vertex:
     __slots__ = (
         "x",
         "y",
@@ -12,7 +11,7 @@ class Vertex():
         "zb",
         "alpha",
     )
-    
+
     def __init__(self, vertex_data: bytes):
         self.x = int.from_bytes(vertex_data[0:2], "big")
         self.y = int.from_bytes(vertex_data[2:4], "big")

@@ -91,7 +91,7 @@ class Rom:
             list[TextData]: The game's text data
         """
         return [text_data for text_data in self.generate_text_data()]
-    
+
     @property
     def geometry_tables(self):
         return [geometry_data for geometry_data in self.generate_geometry_data()]
@@ -125,8 +125,13 @@ class Rom:
                 table_data = zlib.decompress(table_data, (15 + 32))
             if not table_data:
                 continue
-            yield dict(_raw_data=table_data, offset=entry_start, size=entry_size, was_compressed=True if indic == 0x1F8B else False)
-            
+            yield dict(
+                _raw_data=table_data,
+                offset=entry_start,
+                size=entry_size,
+                was_compressed=True if indic == 0x1F8B else False,
+            )
+
     def generate_rom_table_data(self, tables: list[int]) -> Generator[dict, None, None]:
         """A generator that iterates through the various table data in the ROM
 
@@ -165,7 +170,7 @@ class Rom:
         """
         for table_data in self.generate_rom_table_data([12]):
             yield TextData(**table_data, _release_or_kiosk=self.release_or_kiosk)
-            
+
     def generate_cutscene_data(self) -> Generator[CutsceneData, None, None]:
         """A generator for fetching the cutscene data
 
