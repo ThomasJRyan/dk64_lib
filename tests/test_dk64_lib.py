@@ -30,6 +30,25 @@ class RomTest(unittest.TestCase):
         self.assertEqual(self.rom.text_tables[0].text_lines[0].text, 'WELCOME TO THE BONUS STAGE!')
         self.assertEqual(self.rom.text_tables[-1].text_lines[-1].text, 'HOW ABOUT ANOTHER GAME?')
         
+    def test_geometry_data(self):
+        self.assertEqual(len(self.rom.geometry_tables), 216)
+        
+        geometry_table = self.rom.geometry_tables[0]
+        self.assertEqual(geometry_table.offset, 1386148)
+        self.assertEqual(geometry_table.size, 930)
+        self.assertEqual(len(geometry_table.display_lists), 2)
+        
+        geometry_table = self.rom.geometry_tables[20]
+        self.assertEqual(geometry_table.offset, 1988678)
+        self.assertEqual(geometry_table.size, 31532)
+        self.assertEqual(len(geometry_table.display_lists), 33)
+        
+        geometry_table = self.rom.geometry_tables[-1]
+        self.assertEqual(geometry_table.offset, 4443108)
+        self.assertEqual(geometry_table.size, 8)
+        self.assertEqual(len(geometry_table.display_lists), 0)
+        
+        
 class FileIOTest(unittest.TestCase):
     def setUp(self):
         self.rom = get_rom()
