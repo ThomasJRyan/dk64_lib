@@ -91,6 +91,10 @@ class Rom:
             list[TextData]: The game's text data
         """
         return [text_data for text_data in self.generate_text_data()]
+    
+    @property
+    def geometry_tables(self):
+        return [geometry_data for geometry_data in self.generate_geometry_data()]
 
     def _extract_table_data(self, start: int, size: int) -> Generator[dict, None, None]:
         """An internal generator for extracting the data that a table points to
