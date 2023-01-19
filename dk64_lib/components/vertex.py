@@ -1,5 +1,6 @@
 from ctypes import c_int16
 
+
 class Vertex:
     __slots__ = (
         "x",
@@ -27,4 +28,4 @@ class Vertex:
         self.alpha = vertex_data[15]
 
     def __repr__(self):
-        return f'Vertex({self.x}, {self.y}, {self.z})'
+        return f"Vertex({self.x}, {self.y}, {self.z})"
