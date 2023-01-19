@@ -5,6 +5,13 @@ from dk64_lib.f3dex2.commands import DL_COMMANDS, DL_Command
 
 class DisplayList:
     def __init__(self, raw_data: bytes, raw_vertex_data: bytes, offset: int):
+        """And object representation of the N64 display list
+
+        Args:
+            raw_data (bytes): Raw data of the display list
+            raw_vertex_data (bytes): Raw data of the verticies associated with this display list
+            offset (int): Localized offset of this display list
+        """
         self._raw_data = raw_data
         self._raw_vertex_data = raw_vertex_data
         self.offset = offset
