@@ -21,6 +21,5 @@ class BaseData(ABC):
     def __post_init__(self):
         ...
 
-    @abstractmethod
     def _parse_data(self):
         ...
