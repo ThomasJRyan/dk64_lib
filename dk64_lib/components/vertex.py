@@ -28,4 +28,4 @@ class Vertex:
         self.alpha = vertex_data[15]
 
     def __repr__(self):
-        return f"Vertex({self.x}, {self.y}, {self.z})"
+        return f"{self.__class__.__qualname__}({self.x}, {self.y}, {self.z})"
