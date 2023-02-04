@@ -2,9 +2,8 @@ import re
 
 from typing import Union
 
-
 class G_SPNOOP:
-    __slots__ = ("opcode", "tag")
+    __slots__ = ("_raw_data", "opcode", "tag")
     parse_pattern = re.compile(b"(?P<opcode>\x00)(?P<tag>[\x00-\xFF]{7})")
 
     def __repr__(self):
@@ -12,18 +11,19 @@ class G_SPNOOP:
 
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
+        self._raw_data = command
         self.opcode = group["opcode"]
         self.tag = group["tag"]
 
 
 class G_VTX:
-    __slots__ = ("_raw_data", "opcode", "vertex_count", "buffer_start", "start_address")
+    __slots__ = ("_raw_data", "opcode", "vertex_count", "buffer_start", "segment", "address")
     parse_pattern = re.compile(
-        b"(?P<opcode>\x01)(?P<v_count>[\x00-\xFF]{2})(?P<b_start>[\x00-\xFF])(?P<addr>[\x00-\xFF]{4})"
+        b"(?P<opcode>\x01)(?P<v_count>[\x00-\xFF]{2})(?P<b_start>[\x00-\xFF])(?P<segment>[\x00-\xFF])(?P<address>[\x00-\xFF]{3})"
     )
 
     def __repr__(self):
-        return f"G_VTX({self.vertex_count}, {self.buffer_start}, {self.start_address.hex()})"
+        return f"G_VTX({self.vertex_count}, {self.buffer_start}, {self.address.hex()})"
 
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
@@ -35,11 +35,12 @@ class G_VTX:
         self.buffer_start = (
             int.from_bytes(group["b_start"], "big") - self.vertex_count * 2
         )
-        self.start_address = group["addr"]
+        self.segment = group["segment"]
+        self.address = group["address"]
 
 
 class G_MODIFYVTX:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\x02)")
 
     def __repr__(self):
@@ -48,10 +49,11 @@ class G_MODIFYVTX:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_CULLDL:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\x03)")
 
     def __repr__(self):
@@ -60,10 +62,11 @@ class G_CULLDL:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_BRANCH_Z:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\x04)")
 
     def __repr__(self):
@@ -72,10 +75,11 @@ class G_BRANCH_Z:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_TRI1:
-    __slots__ = ("opcode", "v1", "v2", "v3")
+    __slots__ = ("_raw_data", "opcode", "v1", "v2", "v3")
     parse_pattern = re.compile(
         b"(?P<opcode>\x05)(?P<v1>[\x00-\xFF])(?P<v2>[\x00-\xFF])(?P<v3>[\x00-\xFF])\x00\x00\x00\x00"
     )
@@ -86,25 +90,35 @@ class G_TRI1:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
         self.v1 = int(int.from_bytes(group["v1"], "big") / 2)
         self.v2 = int(int.from_bytes(group["v2"], "big") / 2)
         self.v3 = int(int.from_bytes(group["v3"], "big") / 2)
 
 
 class G_TRI2:
-    __slots__ = "opcode"
-    parse_pattern = re.compile(b"(?P<opcode>\x06)")
+    __slots__ = ("_raw_data", "opcode", "v1", "v2", "v3", "v4", "v5", "v6")
+    parse_pattern = re.compile(
+        b"(?P<opcode>\x06)(?P<v1>[\x00-\xFF])(?P<v2>[\x00-\xFF])(?P<v3>[\x00-\xFF])\x00(?P<v4>[\x00-\xFF])(?P<v5>[\x00-\xFF])(?P<v6>[\x00-\xFF])"
+    )
 
     def __repr__(self):
-        return f"G_TRI2()"
+        return f"G_TRI2(({self.v1}, {self.v2}, {self.v3}), ({self.v4}, {self.v5}, {self.v6}))"
 
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
+        self.v1 = int(int.from_bytes(group["v1"], "big") / 2)
+        self.v2 = int(int.from_bytes(group["v2"], "big") / 2)
+        self.v3 = int(int.from_bytes(group["v3"], "big") / 2)
+        self.v4 = int(int.from_bytes(group["v4"], "big") / 2)
+        self.v5 = int(int.from_bytes(group["v5"], "big") / 2)
+        self.v6 = int(int.from_bytes(group["v6"], "big") / 2)
 
 
 class G_QUAD:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\x07)")
 
     def __repr__(self):
@@ -113,10 +127,11 @@ class G_QUAD:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SPECIAL_3:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xD3)")
 
     def __repr__(self):
@@ -125,10 +140,11 @@ class G_SPECIAL_3:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SPECIAL_2:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xD4)")
 
     def __repr__(self):
@@ -137,10 +153,11 @@ class G_SPECIAL_2:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SPECIAL_1:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xD5)")
 
     def __repr__(self):
@@ -149,10 +166,11 @@ class G_SPECIAL_1:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_DMA_IO:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xD6)")
 
     def __repr__(self):
@@ -161,10 +179,11 @@ class G_DMA_IO:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_TEXTURE:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xD7)")
 
     def __repr__(self):
@@ -173,10 +192,11 @@ class G_TEXTURE:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_POPMTX:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xD8)")
 
     def __repr__(self):
@@ -185,10 +205,11 @@ class G_POPMTX:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_GEOMETRYMODE:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xD9)")
 
     def __repr__(self):
@@ -197,10 +218,11 @@ class G_GEOMETRYMODE:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_MTX:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xDA)")
 
     def __repr__(self):
@@ -209,10 +231,11 @@ class G_MTX:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_MOVEWORD:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xDB)")
 
     def __repr__(self):
@@ -221,10 +244,11 @@ class G_MOVEWORD:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_MOVEMEM:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xDC)")
 
     def __repr__(self):
@@ -233,10 +257,11 @@ class G_MOVEMEM:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_LOAD_UCODE:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xDD)")
 
     def __repr__(self):
@@ -245,22 +270,27 @@ class G_LOAD_UCODE:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_DL:
-    __slots__ = "opcode"
-    parse_pattern = re.compile(b"(?P<opcode>\xDE)")
+    __slots__ = ("_raw_data", "opcode", "store_return_address", "segment", "address")
+    parse_pattern = re.compile(b"(?P<opcode>\xDE)(?P<store_return_address>(\x00|\x01))\x00{2}(?P<segment>[\x00-\xFF])(?P<address>[\x00-\xFF]{3})")
 
     def __repr__(self):
-        return f"G_DL()"
+        return f"G_DL({self.store_return_address}, {self.address})"
 
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
+        self.store_return_address = True if group["store_return_address"] == b"\x00" else False
+        self.segment = group["segment"]
+        self.address = group["address"]
 
 
 class G_ENDDL:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xDF)")
 
     def __repr__(self):
@@ -269,10 +299,11 @@ class G_ENDDL:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_NOOP:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE0)")
 
     def __repr__(self):
@@ -281,10 +312,11 @@ class G_NOOP:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_RDPHALF_1:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE1)")
 
     def __repr__(self):
@@ -293,10 +325,11 @@ class G_RDPHALF_1:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SetOtherMode_L:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE2)")
 
     def __repr__(self):
@@ -305,10 +338,11 @@ class G_SetOtherMode_L:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SetOtherMode_H:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE3)")
 
     def __repr__(self):
@@ -317,10 +351,11 @@ class G_SetOtherMode_H:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_TEXRECT:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE4)")
 
     def __repr__(self):
@@ -329,10 +364,11 @@ class G_TEXRECT:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_TEXRECTFLIP:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE5)")
 
     def __repr__(self):
@@ -341,10 +377,11 @@ class G_TEXRECTFLIP:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_RDPLOADSYNC:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE6)")
 
     def __repr__(self):
@@ -353,10 +390,11 @@ class G_RDPLOADSYNC:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_RDPPIPESYNC:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE7)")
 
     def __repr__(self):
@@ -365,10 +403,11 @@ class G_RDPPIPESYNC:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_RDPTILESYNC:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE8)")
 
     def __repr__(self):
@@ -377,10 +416,11 @@ class G_RDPTILESYNC:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_RDPFULLSYNC:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xE9)")
 
     def __repr__(self):
@@ -389,10 +429,11 @@ class G_RDPFULLSYNC:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETKEYGB:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xEA)")
 
     def __repr__(self):
@@ -401,10 +442,11 @@ class G_SETKEYGB:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETKEYR:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xEB)")
 
     def __repr__(self):
@@ -413,10 +455,11 @@ class G_SETKEYR:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETCONVERT:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xEC)")
 
     def __repr__(self):
@@ -425,10 +468,11 @@ class G_SETCONVERT:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETSCISSOR:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xED)")
 
     def __repr__(self):
@@ -437,10 +481,11 @@ class G_SETSCISSOR:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETPRIMDEPTH:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xEE)")
 
     def __repr__(self):
@@ -449,10 +494,11 @@ class G_SETPRIMDEPTH:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_RDPSetOtherMode:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xEF)")
 
     def __repr__(self):
@@ -461,10 +507,11 @@ class G_RDPSetOtherMode:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_LOADTLUT:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF0)")
 
     def __repr__(self):
@@ -473,10 +520,11 @@ class G_LOADTLUT:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_RDPHALF_2:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF1)")
 
     def __repr__(self):
@@ -485,10 +533,11 @@ class G_RDPHALF_2:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETTILESIZE:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF2)")
 
     def __repr__(self):
@@ -497,10 +546,11 @@ class G_SETTILESIZE:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_LOADBLOCK:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF3)")
 
     def __repr__(self):
@@ -509,10 +559,11 @@ class G_LOADBLOCK:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_LOADTILE:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF4)")
 
     def __repr__(self):
@@ -521,10 +572,11 @@ class G_LOADTILE:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETTILE:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF5)")
 
     def __repr__(self):
@@ -533,10 +585,11 @@ class G_SETTILE:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_FILLRECT:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF6)")
 
     def __repr__(self):
@@ -545,10 +598,11 @@ class G_FILLRECT:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETFILLCOLOR:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF7)")
 
     def __repr__(self):
@@ -557,10 +611,11 @@ class G_SETFILLCOLOR:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETFOGCOLOR:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF8)")
 
     def __repr__(self):
@@ -569,10 +624,11 @@ class G_SETFOGCOLOR:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETBLENDCOLOR:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xF9)")
 
     def __repr__(self):
@@ -581,10 +637,11 @@ class G_SETBLENDCOLOR:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETPRIMCOLOR:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xFA)")
 
     def __repr__(self):
@@ -593,10 +650,11 @@ class G_SETPRIMCOLOR:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETENVCOLOR:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xFB)")
 
     def __repr__(self):
@@ -605,10 +663,11 @@ class G_SETENVCOLOR:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETCOMBINE:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xFC)")
 
     def __repr__(self):
@@ -617,10 +676,11 @@ class G_SETCOMBINE:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETTIMG:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xFD)")
 
     def __repr__(self):
@@ -629,10 +689,11 @@ class G_SETTIMG:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETZIMG:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xFE)")
 
     def __repr__(self):
@@ -641,10 +702,11 @@ class G_SETZIMG:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 class G_SETCIMG:
-    __slots__ = "opcode"
+    __slots__ = ("_raw_data", "opcode")
     parse_pattern = re.compile(b"(?P<opcode>\xFF)")
 
     def __repr__(self):
@@ -653,6 +715,7 @@ class G_SETCIMG:
     def __init__(self, command: bytes):
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
+        self._raw_data = command
 
 
 DL_COMMANDS = {
