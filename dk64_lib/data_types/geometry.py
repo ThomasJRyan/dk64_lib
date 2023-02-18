@@ -7,7 +7,7 @@ from tempfile import TemporaryFile
 
 from dk64_lib.data_types.base import BaseData
 from dk64_lib.f3dex2.commands import DL_COMMANDS
-from dk64_lib.f3dex2.display_list import DisplayList, DisplayListMeta
+from dk64_lib.f3dex2.display_list import DisplayList, DisplayListMeta, create_display_lists
 from dk64_lib.file_io import get_bytes, get_long
    
 
@@ -38,39 +38,39 @@ class GeometryData(BaseData):
             self.vert_chunk_length = _unknown_start - self.vert_chunk_start
             
             
-    def _read_display_list(self, fh: FileIO, dl_pointer: int = None, vertex_pointer: int = None, branched: bool = False):
-        raw_data = b""
+    # def _read_display_list(self, fh: FileIO, dl_pointer: int = None, vertex_pointer: int = None, branched: bool = False):
+    #     raw_data = b""
         
-        if not dl_pointer:
-            dl_pointer = fh.tell()
+    #     if not dl_pointer:
+    #         dl_pointer = fh.tell()
             
-        fh.seek(dl_pointer)
+    #     fh.seek(dl_pointer)
         
-        branches = list()
+    #     branches = list()
         
-        while True:
-            command_bytes = get_bytes(fh, 8)
+    #     while True:
+    #         command_bytes = get_bytes(fh, 8)
             
-            cmd =  DL_COMMANDS.get(command_bytes[:1])(command_bytes)
+    #         cmd =  DL_COMMANDS.get(command_bytes[:1])(command_bytes)
 
-            raw_data += command_bytes
+    #         raw_data += command_bytes
             
-            if cmd.opcode == b"\xDE":
-                branched_display_list, _, _ = self._read_display_list(fh, int.from_bytes(cmd.address, 'big') + self.dl_start, vertex_pointer, True)
-                fh.seek(dl_pointer + len(raw_data))
-                branches.append(branched_display_list)
+    #         if cmd.opcode == b"\xDE":
+    #             branched_display_list, _, _ = self._read_display_list(fh, int.from_bytes(cmd.address, 'big') + self.dl_start, vertex_pointer, True)
+    #             fh.seek(dl_pointer + len(raw_data))
+    #             branches.append(branched_display_list)
             
-            if cmd.opcode == b"\xDF":
-                display_list = DisplayList(
-                        raw_data=raw_data,
-                        file_offset=dl_pointer,
-                        vertex_pointer=vertex_pointer,
-                        parent=self,
-                        branches=branches,
-                        branched=branched,
-                    )
+    #         if cmd.opcode == b"\xDF":
+    #             display_list = DisplayList(
+    #                     raw_data=raw_data,
+    #                     file_offset=dl_pointer,
+    #                     vertex_pointer=vertex_pointer,
+    #                     parent=self,
+    #                     branches=branches,
+    #                     branched=branched,
+    #                 )
                 
-                return display_list, vertex_pointer + display_list.recursive_vertex_count * 16, display_list.dl_offset + display_list.size
+    #             return display_list, vertex_pointer + display_list.recursive_vertex_count * 16, display_list.dl_offset + display_list.size
                     
                 # ret_list.append(
                 #     display_list
@@ -79,7 +79,7 @@ class GeometryData(BaseData):
                 # vert_start += display_list.vertex_count * 16
                 
     @property
-    def display_list_meta(self):
+    def vertex_chunk_data(self) -> list[DisplayListMeta]:
         ret_list = list()
         for chunk_num in range(int(self.vert_chunk_length / 52)):
             chunk_start = self.vert_chunk_start + 52 * chunk_num
@@ -96,35 +96,89 @@ class GeometryData(BaseData):
         Returns:
             list[DisplayList]: A list of display lists
         """
-        ret_list = list()
-        dl_start = self.dl_start
-        vert_start = self.vert_start
+        # ret_list = list()
         
-        dl_vertex_starts = dict()
-        for chunk in self.display_list_meta:
-            dl_vertex_starts.update(chunk.vertex_starts)
-
-        import pudb; pu.db
-
-        # Write the raw data to a temporary file so we can seek and read as necessary
-        with TemporaryFile() as data_file:
-            data_file.write(self._raw_data)
-            data_file.seek(dl_start)
-            # raw_data = b""
-            vertex_pointer = 0
-            dl_pointer = 0
+        raw_dl_data = self._raw_data[self.dl_start : self.vert_start]
+        
+        raw_vertex_data = self._raw_data[self.vert_start : self.vert_start + self.vert_length]
+        
+        return create_display_lists(raw_dl_data, raw_vertex_data, self.vertex_chunk_data)
+        
+        # import pudb; pu.db
+        
+        # for dl_meta in self.display_list_meta:
+        #     vertex_data_start = dl_meta.vertex_start + self.vert_start
+        #     vertex_data_end = dl_meta.vertex_start + dl_meta.vertex_size + self.vert_start
+        #     raw_vertex_data = self._raw_data[vertex_data_start: vertex_data_end]
+        #     ret_list.extend(dl_meta.create_display_lists(raw_dl_data, raw_vertex_data))
+        
+        dl_data = b""
+        dl_pointer = 0
+        
+        with TemporaryFile() as dl_data_file:
+            dl_data_file.write(raw_dl_data)
+            dl_data_file.seek(0)
             
-            branched_dls = dict()
+            while True:
+                if not (command_bytes := get_bytes(dl_data_file, 8)):
+                    break
+                
+                # Get the F3DEX2 command class and intantiate it as an object
+                cmd =  DL_COMMANDS.get(command_bytes[:1])(command_bytes)
+                
+                # Write the command bytes. This will become our DisplayList's _raw_data
+                dl_data += command_bytes
+                
+                # Once we reach the end of the Display List, create the object and start fresh
+                if cmd.opcode == b"\xDF":
+                    display_list = DisplayList(
+                        raw_data=raw_data,
+                        raw_vertex_data=raw_vertex_data,
+                        offset=dl_pointer,
+                        vertex_pointer=vertex_pointer,
+                        branches=branches,
+                        # branched=branched,
+                    )
+                    
+                    ret_list.append(
+                        display_list
+                    )
+                    
+                    dl_pointer = dl_data_file.tell()
+                    
+                    raw_data = b""
+        
+        return ret_list
+        
+        # ret_list = list()
+        # dl_start = self.dl_start
+        # vert_start = self.vert_start
+        
+        # dl_vertex_starts = dict()
+        # for chunk in self.display_list_meta:
+        #     dl_vertex_starts.update(chunk.vertex_starts)
 
-            # While we haven't reached the vertex start point, read each 8 byte command
-            while data_file.tell() < self.vert_start:
-                display_list, new_vertex_pointer, dl_pointer = self._read_display_list(data_file, vertex_pointer=dl_vertex_starts[dl_pointer])
-                branched_dls |= display_list.branches
-                if (existing_dl := branched_dls.get(display_list.dl_offset)):
-                    display_list = existing_dl
-                else:
-                    vertex_pointer = new_vertex_pointer
-                ret_list.append(display_list)
+        # import pudb; pu.db
+
+        # # Write the raw data to a temporary file so we can seek and read as necessary
+        # with TemporaryFile() as data_file:
+        #     data_file.write(self._raw_data)
+        #     data_file.seek(dl_start)
+        #     # raw_data = b""
+        #     vertex_pointer = 0
+        #     dl_pointer = 0
+            
+        #     branched_dls = dict()
+
+        #     # While we haven't reached the vertex start point, read each 8 byte command
+        #     while data_file.tell() < self.vert_start:
+        #         display_list, new_vertex_pointer, dl_pointer = self._read_display_list(data_file, vertex_pointer=dl_vertex_starts[dl_pointer])
+        #         branched_dls |= display_list.branches
+        #         if (existing_dl := branched_dls.get(display_list.dl_offset)):
+        #             display_list = existing_dl
+        #         else:
+        #             vertex_pointer = new_vertex_pointer
+        #         ret_list.append(display_list)
                 
                 
                 # if (existing_dl := [dl for dl in ret_list if dl.file_offset == display_list.file_offset]):
@@ -167,17 +221,25 @@ class GeometryData(BaseData):
         tri_offset = 1
         import pudb; pu.db
         
-        for dl in self.display_lists:
+        for dl_num, dl in enumerate(self.display_lists, 1):
             if dl.is_branched:
                 continue
+            
+            obj_data += f"# Display List {dl_num}, Offset: {dl.offset}\n\n"
+            
             # verticies, triangles = dl.verticies, dl.triangles
             # assert len(verticies) == len(triangles), 'Display List does not have the same amount of verticies and triangles, something went wrong'
-            for verticies, triangles in zip(dl.verticies, dl.triangles):
+            for group_num, (verticies, triangles) in enumerate(zip(dl.verticies, dl.triangles), 1):
+                
+                obj_data += f"# Vertex Group {group_num}\n\n"
+                
                 # Write vertecies to file
                 for vertex in verticies:
                     obj_line = f"v {vertex.x} {vertex.y} {vertex.z}\n"
                     obj_data += obj_line
                 obj_data += "\n"
+                
+                obj_data += f"# Triangle Group {group_num}\n\n"
 
                 # Write triangles/faces to file
                 for tri in triangles:
