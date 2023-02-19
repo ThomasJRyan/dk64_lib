@@ -2,6 +2,7 @@ import re
 
 from typing import Union
 
+
 class G_SPNOOP:
     __slots__ = ("_raw_data", "opcode", "tag")
     parse_pattern = re.compile(b"(?P<opcode>\x00)(?P<tag>[\x00-\xFF]{7})")
@@ -17,7 +18,14 @@ class G_SPNOOP:
 
 
 class G_VTX:
-    __slots__ = ("_raw_data", "opcode", "vertex_count", "buffer_start", "segment", "address")
+    __slots__ = (
+        "_raw_data",
+        "opcode",
+        "vertex_count",
+        "buffer_start",
+        "segment",
+        "address",
+    )
     parse_pattern = re.compile(
         b"(?P<opcode>\x01)(?P<v_count>[\x00-\xFF]{2})(?P<b_start>[\x00-\xFF])(?P<segment>[\x00-\xFF])(?P<address>[\x00-\xFF]{3})"
     )
@@ -275,7 +283,9 @@ class G_LOAD_UCODE:
 
 class G_DL:
     __slots__ = ("_raw_data", "opcode", "store_return_address", "segment", "address")
-    parse_pattern = re.compile(b"(?P<opcode>\xDE)(?P<store_return_address>(\x00|\x01))\x00{2}(?P<segment>[\x00-\xFF])(?P<address>[\x00-\xFF]{3})")
+    parse_pattern = re.compile(
+        b"(?P<opcode>\xDE)(?P<store_return_address>(\x00|\x01))\x00{2}(?P<segment>[\x00-\xFF])(?P<address>[\x00-\xFF]{3})"
+    )
 
     def __repr__(self):
         return f"G_DL({self.store_return_address}, {self.address})"
@@ -284,7 +294,9 @@ class G_DL:
         group = self.parse_pattern.match(command)
         self.opcode = group["opcode"]
         self._raw_data = command
-        self.store_return_address = True if group["store_return_address"] == b"\x00" else False
+        self.store_return_address = (
+            True if group["store_return_address"] == b"\x00" else False
+        )
         self.segment = group["segment"]
         self.address = group["address"]
 

@@ -7,9 +7,14 @@ from tempfile import TemporaryFile
 
 from dk64_lib.data_types.base import BaseData
 from dk64_lib.f3dex2.commands import DL_COMMANDS
-from dk64_lib.f3dex2.display_list import DisplayList, DisplayListChunkData, DisplayListExpansion, create_display_lists
+from dk64_lib.f3dex2.display_list import (
+    DisplayList,
+    DisplayListChunkData,
+    DisplayListExpansion,
+    create_display_lists,
+)
 from dk64_lib.file_io import get_bytes, get_long
-   
+
 
 @dataclass(repr=False)
 class GeometryData(BaseData):
@@ -17,7 +22,7 @@ class GeometryData(BaseData):
 
     def __post_init__(self):
         self.is_pointer = len(self._raw_data) <= 8
-            
+
         # Use a temporary file to allow us to seek throughout it
         with TemporaryFile() as data_file:
             data_file.write(self._raw_data)
@@ -26,21 +31,21 @@ class GeometryData(BaseData):
             # Get the display list and vertex starts
             self.dl_start = get_long(data_file, 0x34)
             self.vert_start = get_long(data_file, 0x38)
-            
+
             # ! I don't know what this is pointing to, but it signifies the end of the
             # ! vertex data which is importent
             _unknown_start = get_long(data_file, 0x40)
             self.vert_length = _unknown_start - self.vert_start
-            
+
             self.vert_chunk_start = get_long(data_file, 0x68)
-            
+
             # ! I don't know what this is pointing to, but it signifies the end of the
             # ! vertex chunk data which is importent
             _unknown_start = get_long(data_file, 0x6C)
             self.vert_chunk_length = _unknown_start - self.vert_chunk_start
-            
+
             self.dl_expansion_start = get_long(data_file, 0x70)
-             
+
     @property
     def dl_expansions(self) -> list[DisplayListExpansion]:
         if self.is_pointer:
@@ -49,16 +54,13 @@ class GeometryData(BaseData):
         with TemporaryFile() as data_file:
             data_file.write(self._raw_data)
             data_file.seek(self.dl_expansion_start)
-            
+
             expansion_count = get_long(data_file)
             for _ in range(expansion_count):
-                ret_list.append(
-                    DisplayListExpansion(get_bytes(data_file, 0x10))
-                )
-                
+                ret_list.append(DisplayListExpansion(get_bytes(data_file, 0x10)))
+
         return ret_list
-            
-                
+
     @property
     def vertex_chunk_data(self) -> list[DisplayListChunkData]:
         if self.is_pointer:
@@ -67,11 +69,9 @@ class GeometryData(BaseData):
         for chunk_num in range(int(self.vert_chunk_length / 52)):
             chunk_start = self.vert_chunk_start + 52 * chunk_num
             chunk_end = self.vert_chunk_start + 52 * (chunk_num + 1)
-            ret_list.append(
-                DisplayListChunkData(self._raw_data[chunk_start : chunk_end])
-            )
+            ret_list.append(DisplayListChunkData(self._raw_data[chunk_start:chunk_end]))
         return ret_list
-                
+
     @property
     def display_lists(self) -> list[DisplayList]:
         """Generate and return a list of display lists inside of the geometry data
@@ -82,13 +82,20 @@ class GeometryData(BaseData):
         # ret_list = list()
         if self.is_pointer:
             return list()
-        
+
         raw_dl_data = self._raw_data[self.dl_start : self.vert_start]
-        
-        raw_vertex_data = self._raw_data[self.vert_start : self.vert_start + self.vert_length]
-        
-        return create_display_lists(raw_dl_data, raw_vertex_data, self.vertex_chunk_data, _expansions=self.dl_expansions)
-    
+
+        raw_vertex_data = self._raw_data[
+            self.vert_start : self.vert_start + self.vert_length
+        ]
+
+        return create_display_lists(
+            raw_dl_data,
+            raw_vertex_data,
+            self.vertex_chunk_data,
+            _expansions=self.dl_expansions,
+        )
+
     def create_obj(self) -> str:
         """Creates an obj file out of the geometry data
 
@@ -97,28 +104,30 @@ class GeometryData(BaseData):
         """
         obj_data = str()
         tri_offset = 1
-        
+
         if self.is_pointer:
             return obj_data
-        
+
         for dl_num, dl in enumerate(self.display_lists, 1):
             if dl.is_branched:
                 continue
-            
+
             obj_data += f"# Display List {dl_num}, Offset: {dl.offset}\n\n"
-            
+
             # verticies, triangles = dl.verticies, dl.triangles
             # assert len(verticies) == len(triangles), 'Display List does not have the same amount of verticies and triangles, something went wrong'
-            for group_num, (verticies, triangles) in enumerate(zip(dl.verticies, dl.triangles), 1):
-                
+            for group_num, (verticies, triangles) in enumerate(
+                zip(dl.verticies, dl.triangles), 1
+            ):
+
                 obj_data += f"# Vertex Group {group_num}\n\n"
-                
+
                 # Write vertecies to file
                 for vertex in verticies:
                     obj_line = f"v {vertex.x} {vertex.y} {vertex.z}\n"
                     obj_data += obj_line
                 obj_data += "\n"
-                
+
                 obj_data += f"# Triangle Group {group_num}\n\n"
 
                 # Write triangles/faces to file
