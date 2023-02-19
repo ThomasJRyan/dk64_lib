@@ -7,7 +7,7 @@ from tempfile import TemporaryFile
 
 from dk64_lib.data_types.base import BaseData
 from dk64_lib.f3dex2.commands import DL_COMMANDS
-from dk64_lib.f3dex2.display_list import DisplayList, DisplayListMeta, create_display_lists
+from dk64_lib.f3dex2.display_list import DisplayList, DisplayListMeta, DisplayListExpansion, create_display_lists
 from dk64_lib.file_io import get_bytes, get_long
    
 
@@ -16,6 +16,8 @@ class GeometryData(BaseData):
     data_type: str = "Geometry"
 
     def __post_init__(self):
+        self.is_pointer = len(self._raw_data) <= 8
+            
         # Use a temporary file to allow us to seek throughout it
         with TemporaryFile() as data_file:
             data_file.write(self._raw_data)
@@ -37,7 +39,9 @@ class GeometryData(BaseData):
             _unknown_start = get_long(data_file, 0x6C)
             self.vert_chunk_length = _unknown_start - self.vert_chunk_start
             
+            self.dl_expansion_start = get_long(data_file, 0x70)
             
+               
     # def _read_display_list(self, fh: FileIO, dl_pointer: int = None, vertex_pointer: int = None, branched: bool = False):
     #     raw_data = b""
         
@@ -77,6 +81,22 @@ class GeometryData(BaseData):
                 # )
                     
                 # vert_start += display_list.vertex_count * 16
+             
+    @property
+    def dl_expansions(self) -> list[DisplayListExpansion]:
+        ret_list = list()
+        with TemporaryFile() as data_file:
+            data_file.write(self._raw_data)
+            data_file.seek(self.dl_expansion_start)
+            
+            expansion_count = get_long(data_file)
+            for _ in range(expansion_count):
+                ret_list.append(
+                    DisplayListExpansion(get_bytes(data_file, 0x10))
+                )
+                
+        return ret_list
+            
                 
     @property
     def vertex_chunk_data(self) -> list[DisplayListMeta]:
@@ -102,7 +122,7 @@ class GeometryData(BaseData):
         
         raw_vertex_data = self._raw_data[self.vert_start : self.vert_start + self.vert_length]
         
-        return create_display_lists(raw_dl_data, raw_vertex_data, self.vertex_chunk_data)
+        return create_display_lists(raw_dl_data, raw_vertex_data, self.vertex_chunk_data, _expansions=self.dl_expansions)
         
         # import pudb; pu.db
         
@@ -219,7 +239,10 @@ class GeometryData(BaseData):
         """
         obj_data = str()
         tri_offset = 1
-        import pudb; pu.db
+        # import pudb; pu.db
+        
+        if self.is_pointer:
+            return obj_data
         
         for dl_num, dl in enumerate(self.display_lists, 1):
             if dl.is_branched:

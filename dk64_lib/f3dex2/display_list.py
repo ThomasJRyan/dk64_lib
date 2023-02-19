@@ -10,6 +10,23 @@ from tempfile import TemporaryFile
 
 from dk64_lib.file_io import get_bytes, get_long, get_char
 
+class DisplayListExpansion():
+    def __init__(self, raw_data: bytes):
+        self._raw_data = raw_data
+        self._parse_data()
+        
+    def _parse_data(self):
+        with TemporaryFile() as data_file:
+            data_file.write(self._raw_data)
+            data_file.seek(0)
+            
+            self.unknown_1 = get_long(data_file)
+            self.unknown_2 = get_long(data_file)
+            self.display_list_offset = get_long(data_file)
+            self.unknown_4 = get_long(data_file)
+        
+    
+
 class DisplayListMeta():
     def __init__(self, raw_data: bytes):
         self._raw_data = raw_data
@@ -608,7 +625,7 @@ class DisplayList:
 
 
 
-def create_display_lists(display_list_data: bytes, vertex_data: bytes, display_list_meta: list[DisplayListMeta], /, _dl_pointer: int = 0, _branched: bool = False, _vertex_data: bytes = None) -> list[DisplayList]:
+def create_display_lists(display_list_data: bytes, vertex_data: bytes, display_list_meta: list[DisplayListMeta], /, _dl_pointer: int = 0, _branched: bool = False, _vertex_data: bytes = None, _expansions: list[DisplayListExpansion] = None) -> list[DisplayList]:
         ret_list = list()
         branches = list()
         
@@ -617,6 +634,10 @@ def create_display_lists(display_list_data: bytes, vertex_data: bytes, display_l
         dl_vertex_starts = dict()
         for chunk in display_list_meta:
             dl_vertex_starts.update(chunk.vertex_start_size)
+            
+        expansion_offsets = list()
+        if _expansions:
+            expansion_offsets = [expansion.display_list_offset for expansion in _expansions]
             
         # Write the raw data to a temporary file so we can seek and read as necessary
         with TemporaryFile() as data_file:
@@ -653,7 +674,7 @@ def create_display_lists(display_list_data: bytes, vertex_data: bytes, display_l
                             # old_vertex_start = vertex_start
                         dl_raw_vertex_data = vertex_data[vertex_start : vertex_start + vertex_size]
                     
-                    branched_display_lists = create_display_lists(display_list_data, vertex_data, display_list_meta, _dl_pointer = int.from_bytes(cmd.address, 'big'), _branched = True, _vertex_data = dl_raw_vertex_data)
+                    branched_display_lists = create_display_lists(display_list_data, vertex_data, display_list_meta, _dl_pointer = int.from_bytes(cmd.address, 'big'), _branched = True, _vertex_data = dl_raw_vertex_data, _expansions=_expansions)
                     branches.extend(branched_display_lists)
                 
                 # Once we reach the end of the Display List, create the object and start fresh
@@ -678,6 +699,11 @@ def create_display_lists(display_list_data: bytes, vertex_data: bytes, display_l
                             increase_vertex_pointer = True
                         dl_raw_vertex_data = vertex_data[vertex_start : vertex_start + vertex_size]
 
+                    if dl_pointer in expansion_offsets:
+                        # import pudb; pu.db
+                        dl_raw_vertex_data = vertex_data
+                        vertex_pointer = 0
+                        increase_vertex_pointer = True
                         
                     if not (display_list := branched_dls.get(dl_pointer)):
                         display_list = DisplayList(
