@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dk64_lib"
-version = "0.0.1"
+version = "0.0.2a0"
 
 [tool.setuptools]
 packages = ["dk64_lib"]

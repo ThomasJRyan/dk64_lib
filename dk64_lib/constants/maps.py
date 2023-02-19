@@ -1,4 +1,4 @@
-[
+MAPS = [
     "Test Map",
     "Funky's Store",
     "DK Arcade",

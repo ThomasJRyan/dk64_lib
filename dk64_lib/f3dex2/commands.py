@@ -841,3 +841,6 @@ DL_Command = Union[
     G_SETZIMG,
     G_SETCIMG,
 ]
+
+def get_command(command_bytes):
+    return DL_COMMANDS.get(command_bytes[:1])(command_bytes)

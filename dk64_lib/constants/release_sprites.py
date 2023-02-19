@@ -1,4 +1,4 @@
-{
+RELEASE_SPRITES = {
     "0": "waterfall_tall",
     "1": "waterfall_short",
     "2": "water",

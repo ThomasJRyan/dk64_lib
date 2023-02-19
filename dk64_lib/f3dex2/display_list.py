@@ -4,7 +4,7 @@ from dk64_lib.components.vertex import Vertex
 from dk64_lib.components.triangle import Triangle
 
 from dk64_lib.f3dex2 import commands
-from dk64_lib.f3dex2.commands import DL_COMMANDS, DL_Command
+from dk64_lib.f3dex2.commands import get_command, DL_Command
 
 from tempfile import TemporaryFile
 
@@ -241,35 +241,47 @@ class DisplayList:
         """
         ret_list = list()
         for command_pos in range(self.num_commands):
-            command = self._raw_data[command_pos * 8 : command_pos * 8 + 8]
+            command_bytes = self._raw_data[command_pos * 8 : command_pos * 8 + 8]
             # Parse each raw command in an object for easy parsing of data
-            if cls := DL_COMMANDS.get(command[:1]):
-                ret_list.append(cls(command))
+            if command := get_command(command_bytes):
+                ret_list.append(command)
         return ret_list
 
 
 def create_display_lists(
     display_list_data: bytes,
     vertex_data: bytes,
-    display_list_meta: list[DisplayListChunkData],
+    display_list_chunk_data: list[DisplayListChunkData],
     /,
+    expansions: list[DisplayListExpansion] = None,
     _dl_pointer: int = 0,
     _branched: bool = False,
     _vertex_data: bytes = None,
-    _expansions: list[DisplayListExpansion] = None,
 ) -> list[DisplayList]:
+    """Create a geometry's display lists given the display list data, vertex data, and display list chunk data
+
+    Args:
+        display_list_data (bytes): Display list data
+        vertex_data (bytes): Vertex data
+        display_list_chunk_data (list[DisplayListChunkData]): List of DisplayListChunkData
+        expansions (list[DisplayListExpansion], optional): Any display list expansion data that might exist in the geometry file. Defaults to None.
+        _dl_pointer (int, optional): The display list pointer. Used to recurisvely build branched display lists and shouldn't be set by the user. Defaults to 0.
+        _branched (bool, optional): When the display list is branched or not. Used to recurisvely build branched display lists and shouldn't be set by the user. Defaults to False.
+        _vertex_data (bytes, optional): Vertex data to override the standard vertex_data with. Used to recurisvely build branched display lists and shouldn't be set by the user. Defaults to None.
+
+    Returns:
+        list[DisplayList]: A list of DisplayList objects
+    """
     ret_list = list()
     branches = list()
 
-    increase_vertex_pointer = True
-
     dl_vertex_starts = dict()
-    for chunk in display_list_meta:
+    for chunk in display_list_chunk_data:
         dl_vertex_starts.update(chunk.vertex_start_size)
 
     expansion_offsets = list()
-    if _expansions:
-        expansion_offsets = [expansion.display_list_offset for expansion in _expansions]
+    if expansions:
+        expansion_offsets = [expansion.display_list_offset for expansion in expansions]
 
     # Write the raw data to a temporary file so we can seek and read as necessary
     with TemporaryFile() as data_file:
@@ -279,8 +291,8 @@ def create_display_lists(
 
         raw_data = b""
         vertex_pointer = 0
-        dl_pointer = _dl_pointer
         old_vertex_start = 0
+        dl_pointer = _dl_pointer
 
         branched_dls = dict()
 
@@ -290,49 +302,35 @@ def create_display_lists(
         while command_bytes := get_bytes(data_file, 8):
 
             # Get the F3DEX2 command class and intantiate it as an object
-            cmd = DL_COMMANDS.get(command_bytes[:1])(command_bytes)
+            cmd = get_command(command_bytes)
 
             # Write the command bytes. This will become our DisplayList's _raw_data
             raw_data += command_bytes
 
+            # * Handle branching display lists
             if cmd.opcode == b"\xDE":
-
-                if vertex_start_size := dl_vertex_starts.get(dl_pointer):
-                    vertex_start, vertex_size = vertex_start_size
-                    # if vertex_start != old_vertex_start:
-                    vertex_pointer = 0
-                    # old_vertex_start = vertex_start
-                    dl_raw_vertex_data = vertex_data[
-                        vertex_start : vertex_start + vertex_size
-                    ]
 
                 branched_display_lists = create_display_lists(
                     display_list_data,
                     vertex_data,
-                    display_list_meta,
+                    display_list_chunk_data,
                     _dl_pointer=int.from_bytes(cmd.address, "big"),
                     _branched=True,
                     _vertex_data=dl_raw_vertex_data,
-                    _expansions=_expansions,
+                    expansions=expansions,
                 )
                 branches.extend(branched_display_lists)
 
-            # Once we reach the end of the Display List, create the object and start fresh
+            # * Once we reach the end of the Display List, create the object and start fresh
             if cmd.opcode == b"\xDF":
-                try:
-                    if vertex_size == vertex_pointer:
-                        dl_raw_vertex_data = vertex_data
-                        vertex_pointer = 0
-                        increase_vertex_pointer = False
-                except Exception:
-                    pass
 
+                # TODO: This is a relic of poor understanding of display list vertex data
+                # TODO: There has to be a cleaner method of processing this
                 if vertex_start_size := dl_vertex_starts.get(dl_pointer):
                     vertex_start, vertex_size = vertex_start_size
                     if vertex_start != old_vertex_start:
                         vertex_pointer = 0
                         old_vertex_start = vertex_start
-                        increase_vertex_pointer = True
                     dl_raw_vertex_data = vertex_data[
                         vertex_start : vertex_start + vertex_size
                     ]
@@ -340,7 +338,6 @@ def create_display_lists(
                 if dl_pointer in expansion_offsets:
                     dl_raw_vertex_data = vertex_data
                     vertex_pointer = 0
-                    increase_vertex_pointer = True
 
                 if not (display_list := branched_dls.get(dl_pointer)):
                     display_list = DisplayList(
@@ -352,18 +349,17 @@ def create_display_lists(
                         branched=_branched,
                     )
 
+                # Update relevant variables
                 ret_list.append(display_list)
-
                 branched_dls.update(display_list.branches)
+                vertex_pointer += display_list.vertex_count * 16
 
-                if increase_vertex_pointer:
-                    vertex_pointer += display_list.vertex_count * 16
-
+                # Reset for the next display list
                 raw_data = b""
+                branches.clear()
                 dl_pointer = data_file.tell()
 
-                branches.clear()
-
+                # If this is a branched display list, break and return
                 if _branched:
                     break
 

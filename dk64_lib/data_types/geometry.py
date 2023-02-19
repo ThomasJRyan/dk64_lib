@@ -93,7 +93,7 @@ class GeometryData(BaseData):
             raw_dl_data,
             raw_vertex_data,
             self.vertex_chunk_data,
-            _expansions=self.dl_expansions,
+            expansions=self.dl_expansions,
         )
 
     def create_obj(self) -> str:

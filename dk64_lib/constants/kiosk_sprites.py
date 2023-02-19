@@ -1,4 +1,4 @@
-{
+KIOSK_SPRITES = {
     "10": "explosion",
     "14": "sparkle",
     "20": "explosion_0",
