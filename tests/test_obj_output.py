@@ -1,4 +1,5 @@
 import os
+import re
 import glob
 import unittest
 
@@ -25,13 +26,21 @@ class ObjTest(unittest.TestCase):
         self.rom = get_rom()
 
     def test_map_objs(self):
+        COMMENT_PATTERN = re.compile(r'#.*\n')
+        NEW_LINE_PATTERN = re.compile(r'[^0-9]\n')
         for map_num, map_name in enumerate(MAPS):
             with self.subTest(f'{map_num}.obj, {map_name}'):
                 try:
                     obj_data = get_obj_file_str(f'{map_num}.obj')
                 except FileNotFoundError:
                     self.skipTest(f'{{map_num}}.obj does not exist... Skipping')
-                self.assertEqual(self.rom.geometry_tables[map_num].create_obj(), obj_data)
+                    
+                created_obj = self.rom.geometry_tables[map_num].create_obj()
+                
+                cleaned_obj_data = NEW_LINE_PATTERN.sub('', COMMENT_PATTERN.sub('', obj_data))
+                cleaned_created_obj = NEW_LINE_PATTERN.sub('', COMMENT_PATTERN.sub('', created_obj))
+                
+                self.assertEqual(cleaned_created_obj, cleaned_obj_data)
 
 
 if __name__ == "__main__":

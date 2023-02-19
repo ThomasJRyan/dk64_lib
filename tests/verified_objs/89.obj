@@ -1,0 +1,76 @@
+# Display List 1, Offset: 0
+
+# Vertex Group 1
+
+v 527 0 64
+v 63 0 64
+v 63 0 528
+v -28 90 -399
+v 156 210 -399
+v 156 90 -399
+v -28 210 -399
+
+# Triangle Group 1
+
+f 1 2 3
+f 4 5 6
+f 4 7 5
+
+# Vertex Group 2
+
+v 527 0 64
+v 63 0 528
+v 527 0 528
+
+# Triangle Group 2
+
+f 8 9 10
+
+# Vertex Group 3
+
+v -400 90 389
+v -400 210 203
+v -400 90 203
+v -400 210 389
+
+# Triangle Group 3
+
+f 11 12 13
+f 11 14 12
+
+# Vertex Group 4
+
+v 388 600 203
+v 203 600 389
+v 388 600 389
+v 203 600 203
+
+# Triangle Group 4
+
+f 15 16 17
+f 15 18 16
+
+# Vertex Group 5
+
+v 992 90 203
+v 992 210 389
+v 992 90 389
+v 992 210 203
+
+# Triangle Group 5
+
+f 19 20 21
+f 19 22 20
+
+# Vertex Group 6
+
+v 388 90 992
+v 203 210 992
+v 203 90 992
+v 388 210 992
+
+# Triangle Group 6
+
+f 23 24 25
+f 23 26 24
+

@@ -84,6 +84,8 @@ class GeometryData(BaseData):
              
     @property
     def dl_expansions(self) -> list[DisplayListExpansion]:
+        if self.is_pointer:
+            return list()
         ret_list = list()
         with TemporaryFile() as data_file:
             data_file.write(self._raw_data)
@@ -100,6 +102,8 @@ class GeometryData(BaseData):
                 
     @property
     def vertex_chunk_data(self) -> list[DisplayListMeta]:
+        if self.is_pointer:
+            return list()
         ret_list = list()
         for chunk_num in range(int(self.vert_chunk_length / 52)):
             chunk_start = self.vert_chunk_start + 52 * chunk_num
@@ -117,6 +121,8 @@ class GeometryData(BaseData):
             list[DisplayList]: A list of display lists
         """
         # ret_list = list()
+        if self.is_pointer:
+            return list()
         
         raw_dl_data = self._raw_data[self.dl_start : self.vert_start]
         
