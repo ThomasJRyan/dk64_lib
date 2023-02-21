@@ -2,6 +2,10 @@
 
 A library for extracting data from a Donkey Kong 64 ROM
 
+## Installation
+
+`pip install dk64-lib`
+
 ## Examples
 
 ### Text data
