@@ -178,7 +178,9 @@ class DisplayList:
 
             if cmd.opcode == b"\xDE":
                 # branched_dl = self.branches.get(int.from_bytes(cmd.address, "big"))
-                branched_dl = self.get_branch_by_offset(int.from_bytes(cmd.address, "big"))
+                branched_dl = self.get_branch_by_offset(
+                    int.from_bytes(cmd.address, "big")
+                )
                 ret_list.extend(branched_dl.triangles)
                 continue
 
@@ -201,7 +203,9 @@ class DisplayList:
                     cmd.address, "big"
                 )
                 vertex_buffer_end = vertex_buffer_start + cmd.vertex_count * 16
-                vertex_data = self._raw_vertex_data[vertex_buffer_start:vertex_buffer_end]
+                vertex_data = self._raw_vertex_data[
+                    vertex_buffer_start:vertex_buffer_end
+                ]
 
                 if vertex_buffer_end > len(self._raw_vertex_data):
                     vertex_buffer_start = int.from_bytes(cmd.address, "big")
@@ -228,7 +232,9 @@ class DisplayList:
                 continue
 
             if cmd.opcode == b"\xDE":
-                branched_dl = self.get_branch_by_offset(int.from_bytes(cmd.address, "big"))
+                branched_dl = self.get_branch_by_offset(
+                    int.from_bytes(cmd.address, "big")
+                )
                 ret_list.extend(branched_dl.verticies)
                 continue
 
@@ -248,11 +254,12 @@ class DisplayList:
             if command := get_command(command_bytes):
                 ret_list.append(command)
         return ret_list
-    
+
     def get_branch_by_offset(self, offset):
         if offset in self.branches:
             return self.branches[self.branches.index(offset)]
         return None
+
 
 def create_display_lists(
     display_list_data: bytes,
@@ -271,11 +278,13 @@ def create_display_lists(
     Returns:
         list[DisplayList]: A list of DisplayList objects
     """
-    
-    def read_display_lists(dl_pointer: int = 0, branched: bool = False, inherited_vertex_data: bytes = None) -> list[DisplayList]:
+
+    def read_display_lists(
+        dl_pointer: int = 0, branched: bool = False, inherited_vertex_data: bytes = None
+    ) -> list[DisplayList]:
         """Recursively read display lists
 
-        Args:        
+        Args:
             _dl_pointer (int, optional): The display list pointer. Defaults to 0.
             _branched (bool, optional): When the display list is branched or not. Defaults to False.
             _vertex_data (bytes, optional): Vertex data to override the standard vertex_data with. Defaults to None.
@@ -289,10 +298,18 @@ def create_display_lists(
         branches = list()
 
         # Generate a dict where the key is the dl offset and the value is a tuple containing the start and size of the vertices
-        dl_vertex_starts = {k: v for chunk in display_list_chunk_data for k, v in chunk.vertex_start_size.items()}
+        dl_vertex_starts = {
+            k: v
+            for chunk in display_list_chunk_data
+            for k, v in chunk.vertex_start_size.items()
+        }
 
         # Generate a list of offsets inlucded in the expansion data. These display lists will use the entire vertex data instead of a segment
-        expansion_offsets = [expansion.display_list_offset for expansion in expansions] if expansions else []
+        expansion_offsets = (
+            [expansion.display_list_offset for expansion in expansions]
+            if expansions
+            else []
+        )
 
         # Write the raw data to a temporary file so we can seek and read as necessary
         with TemporaryFile() as data_file:
@@ -320,11 +337,13 @@ def create_display_lists(
                 # * Handle branching display lists
                 if cmd.opcode == b"\xDE":
 
-                    branches.extend(read_display_lists(
-                        dl_pointer=int.from_bytes(cmd.address, "big"),
-                        branched=True,
-                        inherited_vertex_data=dl_raw_vertex_data,
-                    ))
+                    branches.extend(
+                        read_display_lists(
+                            dl_pointer=int.from_bytes(cmd.address, "big"),
+                            branched=True,
+                            inherited_vertex_data=dl_raw_vertex_data,
+                        )
+                    )
                     continue
 
                 # * Once we reach the end of the Display List, create the object and start fresh
@@ -337,8 +356,10 @@ def create_display_lists(
                         if vertex_start != old_vertex_start:
                             vertex_pointer = 0
                             old_vertex_start = vertex_start
-                        dl_raw_vertex_data = vertex_data[vertex_start:vertex_start+vertex_size]
-                        
+                        dl_raw_vertex_data = vertex_data[
+                            vertex_start : vertex_start + vertex_size
+                        ]
+
                     # If the display list exists in the expansion array, then it uses the entire vertex data
                     if dl_pointer in expansion_offsets:
                         dl_raw_vertex_data = vertex_data
@@ -359,13 +380,13 @@ def create_display_lists(
 
                     # Update relevant variables
                     ret_list.append(display_list)
-                    branched_dls.update({dl.offset:dl for dl in display_list.branches})
+                    branched_dls.update({dl.offset: dl for dl in display_list.branches})
                     vertex_pointer += display_list.vertex_count * 16
 
                     # Update the branches to use the parent vertex data
                     for branch in branches:
                         branch._raw_vertex_data = dl_raw_vertex_data
-                        
+
                     # Reset for the next display list
                     raw_data = b""
                     branches = list()
@@ -375,7 +396,7 @@ def create_display_lists(
                     if branched:
                         break
                     continue
-                
+
         return ret_list
 
     return read_display_lists()
