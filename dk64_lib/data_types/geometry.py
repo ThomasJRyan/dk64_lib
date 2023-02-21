@@ -79,7 +79,6 @@ class GeometryData(BaseData):
         Returns:
             list[DisplayList]: A list of display lists
         """
-        # ret_list = list()
         if self.is_pointer:
             return list()
 
