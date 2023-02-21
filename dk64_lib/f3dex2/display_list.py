@@ -93,6 +93,11 @@ class DisplayList:
             return f"DisplayList({self.offset=}, {self.size=}, {self.num_commands=}, branches={len(self.branches)})"
         return f"DisplayList({self.offset=}, {self.size=}, {self.num_commands=})"
 
+    def __eq__(self, obj):
+        if isinstance(obj, int):
+            return self.offset == obj
+        return self == obj
+
     @property
     def raw_vertex_data(self):
         return self._raw_vertex_data
@@ -100,7 +105,7 @@ class DisplayList:
     @raw_vertex_data.setter
     def raw_vertex_data(self, raw_vertex_data):
         self._raw_vertex_data = raw_vertex_data
-        for branch in self.branches.values():
+        for branch in self.branches:
             branch.raw_vertex_data = raw_vertex_data
 
     @property
@@ -137,20 +142,9 @@ class DisplayList:
     @property
     def recursive_vertex_count(self) -> int:
         total_verticies = 0
-        for branch_dl in self.branches.values():
+        for branch_dl in self.branches:
             total_verticies += branch_dl.recursive_vertex_count
         return self.vertex_count + total_verticies
-
-    @property
-    def branches(self) -> dict[str, "DisplayList"]:
-        return self._branches
-
-    @branches.setter
-    def branches(self, branched_dls: list["DisplayList"]):
-        branch_dict = dict()
-        for branch in branched_dls:
-            branch_dict[branch.offset] = branch
-        self._branches = branch_dict
 
     @property
     def triangles(self) -> list[list[Triangle]]:
@@ -183,7 +177,8 @@ class DisplayList:
                 continue
 
             if cmd.opcode == b"\xDE":
-                branched_dl = self.branches.get(int.from_bytes(cmd.address, "big"))
+                # branched_dl = self.branches.get(int.from_bytes(cmd.address, "big"))
+                branched_dl = self.get_branch_by_offset(int.from_bytes(cmd.address, "big"))
                 ret_list.extend(branched_dl.triangles)
                 continue
 
@@ -234,7 +229,7 @@ class DisplayList:
                 vert_list = list()
 
             if cmd.opcode == b"\xDE":
-                branched_dl = self.branches.get(int.from_bytes(cmd.address, "big"))
+                branched_dl = self.get_branch_by_offset(int.from_bytes(cmd.address, "big"))
                 ret_list.extend(branched_dl.verticies)
 
         return ret_list
@@ -253,7 +248,11 @@ class DisplayList:
             if command := get_command(command_bytes):
                 ret_list.append(command)
         return ret_list
-
+    
+    def get_branch_by_offset(self, offset):
+        if offset in self.branches:
+            return self.branches[self.branches.index(offset)]
+        return None
 
 def create_display_lists(
     display_list_data: bytes,
@@ -359,16 +358,16 @@ def create_display_lists(
 
                     # Update relevant variables
                     ret_list.append(display_list)
-                    branched_dls.update(display_list.branches)
+                    branched_dls.update({dl.offset:dl for dl in display_list.branches})
                     vertex_pointer += display_list.vertex_count * 16
 
-                    # ! Something about this makes me feel like it will cause errors. Best keep an eye out
+                    # Update the branches to use the parent vertex data
                     for branch in branches:
                         branch._raw_vertex_data = dl_raw_vertex_data
                         
                     # Reset for the next display list
                     raw_data = b""
-                    branches.clear()
+                    branches = list()
                     dl_pointer = data_file.tell()
 
                     # If this is a branched display list, break and return
