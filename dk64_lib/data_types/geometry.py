@@ -1,12 +1,9 @@
 import pathlib
 
-from io import FileIO
-
 from dataclasses import dataclass
 from tempfile import TemporaryFile
 
 from dk64_lib.data_types.base import BaseData
-from dk64_lib.f3dex2.commands import DL_COMMANDS
 from dk64_lib.f3dex2.display_list import (
     DisplayList,
     DisplayListChunkData,
@@ -21,7 +18,8 @@ class GeometryData(BaseData):
     data_type: str = "Geometry"
 
     def __post_init__(self):
-        self.is_pointer = len(self._raw_data) <= 8
+        self.is_pointer = self._raw_data[2] == 8
+        self.points_to = None
 
         # Use a temporary file to allow us to seek throughout it
         with TemporaryFile() as data_file:
@@ -47,7 +45,18 @@ class GeometryData(BaseData):
             self.dl_expansion_start = get_long(data_file, 0x70)
 
     @property
+    def pointer(self):
+        if self.is_pointer:
+            return self._raw_data[1]
+        return None
+
+    @property
     def dl_expansions(self) -> list[DisplayListExpansion]:
+        """Returns a list of the display list expansion data
+
+        Returns:
+            list[DisplayListExpansion]: Display list expansion data
+        """
         if self.is_pointer:
             return list()
         ret_list = list()
@@ -63,6 +72,11 @@ class GeometryData(BaseData):
 
     @property
     def vertex_chunk_data(self) -> list[DisplayListChunkData]:
+        """Returns a list of display list chunk data found in the geometry file
+
+        Returns:
+            list[DisplayListChunkData]: Display list chunk data
+        """
         if self.is_pointer:
             return list()
         ret_list = list()

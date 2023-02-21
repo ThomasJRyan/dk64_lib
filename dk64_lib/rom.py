@@ -186,5 +186,10 @@ class Rom:
         Yields:
             Generator[GeometryData, None, None]: A single piece of texture data
         """
+        geometry_tables = list()
         for table_data in self.generate_rom_table_data([1]):
-            yield GeometryData(**table_data)
+            geometry_table = GeometryData(**table_data)
+            geometry_tables.append(geometry_table)
+            if geometry_table.is_pointer:
+                geometry_table.points_to = geometry_tables[geometry_table.pointer]
+        return geometry_tables
