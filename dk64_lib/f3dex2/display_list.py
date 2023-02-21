@@ -216,9 +216,7 @@ class DisplayList:
 
                 for _ in range(cmd.vertex_count):
                     # Read the raw data and create a Vertex object out of it
-                    vertex_bytes = vertex_data[vert_start:vert_end]
-                    vertex = Vertex(vertex_bytes)
-                    vert_list.append(vertex)
+                    vert_list.append(Vertex(vertex_data[vert_start:vert_end]))
 
                     # Move the vertex start and end 16 bytes ahead
                     vert_start = vert_end
@@ -227,10 +225,12 @@ class DisplayList:
                 # Append the vert list and reset
                 ret_list.append(vert_list)
                 vert_list = list()
+                continue
 
             if cmd.opcode == b"\xDE":
                 branched_dl = self.get_branch_by_offset(int.from_bytes(cmd.address, "big"))
                 ret_list.extend(branched_dl.verticies)
+                continue
 
         return ret_list
 
@@ -272,7 +272,7 @@ def create_display_lists(
         list[DisplayList]: A list of DisplayList objects
     """
     
-    def read_display_lists(dl_pointer: int = 0, branched: bool = False, local_vertex_data: bytes = None) -> list[DisplayList]:
+    def read_display_lists(dl_pointer: int = 0, branched: bool = False, inherited_vertex_data: bytes = None) -> list[DisplayList]:
         """Recursively read display lists
 
         Args:        
@@ -306,7 +306,7 @@ def create_display_lists(
 
             branched_dls = dict()
 
-            dl_raw_vertex_data = local_vertex_data or vertex_data
+            dl_raw_vertex_data = inherited_vertex_data or vertex_data
 
             # While we haven't reached the vertex start point, read each 8 byte command
             while command_bytes := get_bytes(data_file, 8):
@@ -320,12 +320,12 @@ def create_display_lists(
                 # * Handle branching display lists
                 if cmd.opcode == b"\xDE":
 
-                    branched_display_lists = read_display_lists(
+                    branches.extend(read_display_lists(
                         dl_pointer=int.from_bytes(cmd.address, "big"),
                         branched=True,
-                        local_vertex_data=dl_raw_vertex_data,
-                    )
-                    branches.extend(branched_display_lists)
+                        inherited_vertex_data=dl_raw_vertex_data,
+                    ))
+                    continue
 
                 # * Once we reach the end of the Display List, create the object and start fresh
                 if cmd.opcode == b"\xDF":
@@ -339,6 +339,7 @@ def create_display_lists(
                             old_vertex_start = vertex_start
                         dl_raw_vertex_data = vertex_data[vertex_start:vertex_start+vertex_size]
                         
+                    # If the display list exists in the expansion array, then it uses the entire vertex data
                     if dl_pointer in expansion_offsets:
                         dl_raw_vertex_data = vertex_data
                         vertex_pointer = 0
@@ -373,6 +374,8 @@ def create_display_lists(
                     # If this is a branched display list, break and return
                     if branched:
                         break
+                    continue
+                
         return ret_list
 
     return read_display_lists()
