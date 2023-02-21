@@ -8,7 +8,7 @@ from dk64_lib.rom import Rom
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
-def get_rom():
+def get_rom() -> Rom:
     rom_glob = glob.glob(str(Path(os.path.dirname(__file__)) / "dk64_rom" / "*.*"))
     # TODO: At the moment, we are only testing a single version (US specifically)
     # TODO: This should be updated to test all versions of DK64

@@ -1,0 +1,22 @@
+# Display List 1, Offset: 0
+
+# Vertex Group 1
+
+v 0 0 5000
+v 5000 0 0
+v 0 0 0
+
+# Triangle Group 1
+
+f 1 2 3
+
+# Vertex Group 2
+
+v 0 0 5000
+v 5000 0 5000
+v 5000 0 0
+
+# Triangle Group 2
+
+f 4 5 6
+

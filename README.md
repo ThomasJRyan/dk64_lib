@@ -23,6 +23,17 @@ for text_line in rom.text_tables[0].text_lines:
 
 ```
 
+### Geometry data
+
+Export every map to an obj
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+for map_num, geometry_map in enumerate(rom.geometry_tables):
+    geometry_map.save_to_obj(f'{map_num}.obj')
+```
+
 ## To-do
 - Extract texture data and convert to appropriately formatted images
 - Extract models and convert to objs

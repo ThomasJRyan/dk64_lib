@@ -1,3 +1,4 @@
+dist/
 venv/
 dk64_lib.egg-info/
 __pycache__/
