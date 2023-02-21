@@ -1,5 +1,3 @@
-from io import FileIO
-
 from dk64_lib.components.vertex import Vertex
 from dk64_lib.components.triangle import Triangle
 
@@ -12,6 +10,14 @@ from dk64_lib.file_io import get_bytes, get_long, get_char
 
 
 class DisplayListExpansion:
+    """
+        This section of the geometry is currently not fully understood
+        As such, there are signficant gaps in the known values
+        
+        Currently, the only known information is that the third u32 points
+        to a display list. This display list uses the entire vertex data
+        when calling VTX commands instead of a segmented chunk
+    """
     def __init__(self, raw_data: bytes):
         self._raw_data = raw_data
         self._parse_data()
@@ -74,13 +80,18 @@ class DisplayList:
         branches: list["DisplayList"] = None,
         branched: bool = False,
     ):
-        """And object representation of the N64 display list
+        """An object representation of the N64 display list
 
         Args:
             raw_data (bytes): Raw data of the display list
             raw_vertex_data (bytes): Raw data of the verticies associated with this display list
+            vertex_pointer (int): The display list's pointer in the vertex data
             offset (int): Localized offset of this display list
+            branches (list[DisplayList], optional): The display list's branches. Defaults to None.
+            branched (bool, optional): Whether the display list is branched or not. Defaults to False.
         """
+        
+        
         self._raw_data = raw_data
         self.branches = branches if branches else list()
         self.raw_vertex_data = raw_vertex_data
@@ -177,7 +188,6 @@ class DisplayList:
                 continue
 
             if cmd.opcode == b"\xDE":
-                # branched_dl = self.branches.get(int.from_bytes(cmd.address, "big"))
                 branched_dl = self.get_branch_by_offset(
                     int.from_bytes(cmd.address, "big")
                 )
