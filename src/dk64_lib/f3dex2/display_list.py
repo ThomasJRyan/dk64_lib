@@ -1,10 +1,10 @@
+from tempfile import TemporaryFile
+
 from dk64_lib.components.vertex import Vertex
 from dk64_lib.components.triangle import Triangle
 
 from dk64_lib.f3dex2 import commands
 from dk64_lib.f3dex2.commands import get_command, DL_Command
-
-from tempfile import TemporaryFile
 
 from dk64_lib.file_io import get_bytes, get_long, get_char
 

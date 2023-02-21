@@ -1,3 +1,4 @@
+import re
 import pathlib
 
 from dataclasses import dataclass
@@ -12,13 +13,16 @@ from dk64_lib.f3dex2.display_list import (
 )
 from dk64_lib.file_io import get_bytes, get_long
 
+POINTER_PATTERN = re.compile(b'\x00[\x00-\xFF]\x08\x00\x00\x00\x00\x00')
 
 @dataclass(repr=False)
 class GeometryData(BaseData):
     data_type: str = "Geometry"
 
     def __post_init__(self):
-        self.is_pointer = self._raw_data[2] == 8
+        self.is_pointer = False
+        if POINTER_PATTERN.match(self._raw_data[:8]):
+            self.is_pointer = True
         self.points_to = None
 
         # Use a temporary file to allow us to seek throughout it

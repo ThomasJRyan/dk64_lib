@@ -4,7 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dk64_lib"
-version = "0.0.2a0"
+version = "0.1.0"
+requires-python = ">=3.10"
+readme = "README.md"
+license = { file = "LICENSE" }
 
-[tool.setuptools]
-packages = ["dk64_lib"]
+# [tool.setuptools]
+# packages = ["dk64_lib", "dk64_lib.components"]
+
+# [tool.setuptools.packages]
+# find = {}
+
+# [tool.setuptools.packages.find]
+# where = ["dk64_lib", "dk64_lib.*"]
+
+# [tool.setuptools.package-dir]
+# dk64_lib = "dk64_lib"
+# "dk64_lib.components" = "components"
