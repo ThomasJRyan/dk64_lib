@@ -8,6 +8,9 @@ version = "0.1.0"
 requires-python = ">=3.10"
 readme = "README.md"
 license = { file = "LICENSE" }
+dependencies = [
+    "pycollada",
+]
 
 # [tool.setuptools]
 # packages = ["dk64_lib", "dk64_lib.components"]
