@@ -59,23 +59,19 @@ class _TextLine:
         return f"_TextLine({self.data_start=}, {self.text=})"
 
 
-@dataclass(kw_only=True)
 class TextData(BaseData):
-    _release_or_kiosk: str
-    data_type: str = "Text"
-
-    _data: list[Union["_Text", "_Sprite"]] | None = None
-
-    def __post_init__(self):
+    def __post_init__(self, release_or_kiosk: str):
         """Run byte processing on raw_data after init"""
+        self.data_type = "Text"
+        self.release_or_kiosk = release_or_kiosk
         self._SPRITE_LIST = (
-            RELEASE_SPRITES if self._release_or_kiosk == "release" else KIOSK_SPRITES
+            RELEASE_SPRITES if self.release_or_kiosk == "release" else KIOSK_SPRITES
         )
         self._data = list()
 
         # Use a temporary file to allow us to seek throughout it
         with TemporaryFile() as data_file:
-            data_file.write(self._raw_data)
+            data_file.write(self.raw_data)
             data_file.seek(0)
             self._parse_data(data_file)
 

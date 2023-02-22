@@ -2,8 +2,8 @@ import os
 import zlib
 
 from pathlib import Path
-from dataclasses import dataclass
 from tempfile import TemporaryFile
+from functools import cache, cached_property
 
 from typing import Literal, Generator
 
@@ -41,7 +41,7 @@ class Rom:
         """Closes the file on deletion"""
         self.rom_fh.close()
 
-    @property
+    @cached_property
     def release_or_kiosk(self) -> Literal["release", "kiosk"]:
         """Read the release/kiosk flag to check game version
 
@@ -53,7 +53,7 @@ class Rom:
             return "kiosk"
         return "release"
 
-    @property
+    @cached_property
     def region(self) -> Literal["us", "pal", "jp", "kiosk"]:
         """Read the region flag and return which region the ROM is
 
@@ -71,7 +71,7 @@ class Rom:
         except KeyError:
             raise KeyError(f"This region ({region}) is invalid")
 
-    @property
+    @cached_property
     def pointer_table_offset(self) -> Literal[0x101C50, 0x1038D0, 0x1039C0, 0x1A7C20]:
         """Gets the pointer table offset for the ROM
 
@@ -83,19 +83,20 @@ class Rom:
             return 0x1A7C20
         return self.REGIONS_AND_POINTER_TABLE_OFFSETS[region][1]
 
-    @property
+    @cached_property
     def text_tables(self) -> list[TextData]:
         """Returns a list of all text data
 
         Returns:
             list[TextData]: The game's text data
         """
-        return [text_data for text_data in self.generate_text_data()]
+        return [text_data for text_data in self.get_text_data()]
 
-    @property
+    @cached_property
     def geometry_tables(self):
-        return [geometry_data for geometry_data in self.generate_geometry_data()]
+        return [geometry_data for geometry_data in self.get_geometry_data()]
 
+    @cache
     def _extract_table_data(self, start: int, size: int) -> Generator[dict, None, None]:
         """An internal generator for extracting the data that a table points to
 
@@ -126,10 +127,11 @@ class Rom:
             if not table_data:
                 continue
             yield dict(
-                _raw_data=table_data,
+                raw_data=table_data,
                 offset=entry_start,
                 size=entry_size,
                 was_compressed=True if indic == 0x1F8B else False,
+                rom=self,
             )
 
     def generate_rom_table_data(self, tables: list[int]) -> Generator[dict, None, None]:
@@ -153,43 +155,53 @@ class Rom:
             for data in self._extract_table_data(table_start, table_size):
                 yield data
 
-    def generate_texture_data(self) -> Generator[TextureData, None, None]:
-        """A generator for fetching the texture data
+    @cache
+    def get_texture_data(self) -> list[TextureData]:
+        """A function for fetching the texture data
 
         Yields:
-            Generator[TextureData, None, None]: A single piece of texture data
+            list[TextureData]: A list of texture data
         """
+        texture_data = list()
         for table_data in self.generate_rom_table_data([7, 14, 25]):
-            yield TextureData(**table_data)
+            texture_data.append(TextureData(**table_data))
+        return texture_data
 
-    def generate_text_data(self) -> Generator[TextData, None, None]:
-        """A generator for fetching the text data
+    @cache
+    def get_text_data(self) -> list[TextData]:
+        """A function for fetching the text data
 
         Yields:
-            Generator[TextData, None, None]: A single piece of texture data
+            list[TextData]: A list of texture data
         """
+        text_data = list()
         for table_data in self.generate_rom_table_data([12]):
-            yield TextData(**table_data, _release_or_kiosk=self.release_or_kiosk)
+            text_data.append(TextData(**table_data, release_or_kiosk=self.release_or_kiosk))
+        return text_data
 
-    def generate_cutscene_data(self) -> Generator[CutsceneData, None, None]:
-        """A generator for fetching the cutscene data
+    @cache
+    def get_cutscene_data(self) -> list[CutsceneData]:
+        """A function for fetching the cutscene data
 
         Yields:
-            Generator[CutsceneData, None, None]: A single piece of texture data
+            list[CutsceneData]: A list of texture data
         """
+        cutscene_data = list()
         for table_data in self.generate_rom_table_data([8]):
-            yield CutsceneData(**table_data)
+            cutscene_data.append(TextureData(**table_data))
+        return cutscene_data
 
-    def generate_geometry_data(self) -> Generator[GeometryData, None, None]:
-        """A generator for fetching the cutscene data
+    @cache
+    def get_geometry_data(self) -> list[GeometryData]:
+        """A function for fetching the cutscene data
 
         Yields:
-            Generator[GeometryData, None, None]: A single piece of texture data
+            list[GeometryData]: A list of texture data
         """
-        geometry_tables = list()
+        geometry_data = list()
         for table_data in self.generate_rom_table_data([1]):
             geometry_table = GeometryData(**table_data)
-            geometry_tables.append(geometry_table)
+            geometry_data.append(geometry_table)
             if geometry_table.is_pointer:
-                geometry_table.points_to = geometry_tables[geometry_table.pointer]
-        return geometry_tables
+                geometry_table.points_to = geometry_data[geometry_table.pointer]
+        return geometry_data

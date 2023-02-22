@@ -18,19 +18,17 @@ from dk64_lib.file_io import get_bytes, get_long
 
 POINTER_PATTERN = re.compile(b'\x00[\x00-\xFF]\x08\x00\x00\x00\x00\x00')
 
-@dataclass(repr=False)
 class GeometryData(BaseData):
-    data_type: str = "Geometry"
-
     def __post_init__(self):
+        self.data_type = "Geometry"
         self.is_pointer = False
-        if POINTER_PATTERN.match(self._raw_data[:8]):
+        if POINTER_PATTERN.match(self.raw_data[:8]):
             self.is_pointer = True
         self.points_to = None
 
         # Use a temporary file to allow us to seek throughout it
         with TemporaryFile() as data_file:
-            data_file.write(self._raw_data)
+            data_file.write(self.raw_data)
             data_file.seek(0)
 
             # Get the display list and vertex starts
@@ -54,7 +52,7 @@ class GeometryData(BaseData):
     @property
     def pointer(self):
         if self.is_pointer:
-            return self._raw_data[1]
+            return self.raw_data[1]
         return None
 
     @property
@@ -68,7 +66,7 @@ class GeometryData(BaseData):
             return list()
         ret_list = list()
         with TemporaryFile() as data_file:
-            data_file.write(self._raw_data)
+            data_file.write(self.raw_data)
             data_file.seek(self.dl_expansion_start)
 
             expansion_count = get_long(data_file)
@@ -90,7 +88,7 @@ class GeometryData(BaseData):
         for chunk_num in range(int(self.vert_chunk_length / 52)):
             chunk_start = self.vert_chunk_start + 52 * chunk_num
             chunk_end = self.vert_chunk_start + 52 * (chunk_num + 1)
-            ret_list.append(DisplayListChunkData(self._raw_data[chunk_start:chunk_end]))
+            ret_list.append(DisplayListChunkData(self.raw_data[chunk_start:chunk_end]))
         return ret_list
 
     @property
@@ -103,9 +101,9 @@ class GeometryData(BaseData):
         if self.is_pointer:
             return list()
 
-        raw_dl_data = self._raw_data[self.dl_start : self.vert_start]
+        raw_dl_data = self.raw_data[self.dl_start : self.vert_start]
 
-        raw_vertex_data = self._raw_data[
+        raw_vertex_data = self.raw_data[
             self.vert_start : self.vert_start + self.vert_length
         ]
 
