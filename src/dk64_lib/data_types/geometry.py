@@ -4,6 +4,9 @@ import pathlib
 from dataclasses import dataclass
 from tempfile import TemporaryFile
 
+from numpy import array as numpy_array
+from collada import Collada, source, material, geometry, scene
+
 from dk64_lib.data_types.base import BaseData
 from dk64_lib.f3dex2.display_list import (
     DisplayList,
@@ -131,8 +134,6 @@ class GeometryData(BaseData):
 
             obj_data += f"# Display List {dl_num}, Offset: {dl.offset}\n\n"
 
-            # verticies, triangles = dl.verticies, dl.triangles
-            # assert len(verticies) == len(triangles), 'Display List does not have the same amount of verticies and triangles, something went wrong'
             for group_num, (verticies, triangles) in enumerate(
                 zip(dl.verticies, dl.triangles), 1
             ):
@@ -168,3 +169,77 @@ class GeometryData(BaseData):
         filepath = pathlib.Path(folderpath, filename)
         with open(filepath, "w") as obj_file:
             obj_file.write(self.create_obj())
+
+    def create_dae(self) -> Collada:
+        """Creates a dae file out of the geometry data
+
+        Returns:
+            Collada: dae file
+        """
+        mesh = Collada()
+        
+        vertex_data = list()
+        vertex_colour_data = list()
+        triangle_data = list()
+        tri_offset = 0
+        
+        for dl in self.display_lists:
+            if dl.is_branched:
+                continue
+
+            for verticies, triangles in zip(dl.verticies, dl.triangles):
+
+                # Write vertecies to file
+                for vertex in verticies:
+                    vertex_data.extend((vertex.x, vertex.y, vertex.z))
+                    vertex_colour_data.extend((vertex.xr / 255, vertex.yg / 255, vertex.zb / 255, vertex.alpha / 255))
+
+                # # Write triangles/faces to file
+                for tri in triangles:
+                    triangle_data.extend((tri.v1 + tri_offset, tri.v2 + tri_offset, tri.v3 + tri_offset))
+
+                # # The triangle offset is used to globally identify the vertex due to
+                # # Display Lists reading them with local positions
+                tri_offset += len(verticies)
+        
+        # Create the vertices and vertex colours
+        src_vertices = source.FloatSource("geo-vertices", numpy_array(vertex_data), ('X', 'Y', 'Z'))
+        src_vertices_colour = source.FloatSource('vertex-colours', numpy_array(vertex_colour_data), ('R', 'G', 'B', 'A'))
+        
+        # Create a geometry with the data points
+        geom = geometry.Geometry(mesh, "geometry0", "map", [src_vertices, src_vertices_colour])
+        mesh.geometries.append(geom)
+        
+        # Create a triangle set and append it to the geometry
+        triset = geom.createTriangleSet(numpy_array(triangle_data), input_list, "vertex-material")
+        geom.primitives.append(triset)
+
+        # The input list is used to define the vertices and colours 
+        input_list = source.InputList()
+        input_list.addInput(0, 'VERTEX', "#geo-vertices")
+        input_list.addInput(0, 'COLOR', '#vertex-colours')
+        
+        # Create the phong effect and material using the vertex colours
+        effect = material.Effect('vertex-effect', [], 'phong', diffuse=src_vertices_colour)
+        mat = material.Material('vertex-material', 'vertex-material', effect)
+        mesh.effects.append(effect)
+        mesh.materials.append(mat)
+        
+        # Create and add the scene
+        geomnode = scene.GeometryNode(geom, [])
+        node = scene.Node("node0", children=[geomnode])
+        myscene = scene.Scene("myscene", [node])
+        mesh.scenes.append(myscene)
+        mesh.scene = myscene
+        
+        return mesh
+        
+    def save_to_dae(self, filename: str, folderpath: str = ".") -> None:
+        """Save geometry data to dae format
+
+        Args:
+            filename (str): Name of dae file
+            folderpath (str, optional): Folder path to save dae to. Defaults to ".".
+        """
+        filepath = pathlib.Path(folderpath, filename)
+        self.create_dae().write(filepath)
