@@ -8,12 +8,6 @@ from dk64_lib.constants import RELEASE_SPRITES, KIOSK_SPRITES
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
-@dataclass(repr=False)
 class CutsceneData(BaseData):
-    data_type: str = "Cutscene"
-
     def __post_init__(self):
-        self._parse_data()
-
-    def _parse_data(self):
-        return super()._parse_data()
+        self.data_type = "Cutscene"
