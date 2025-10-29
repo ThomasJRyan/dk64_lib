@@ -1,12 +1,30 @@
 from tempfile import TemporaryFile
 
-from dk64_lib.components.vertex import Vertex
-from dk64_lib.components.triangle import Triangle
-
 from dk64_lib.f3dex2 import commands
 from dk64_lib.f3dex2.commands import get_command, DL_Command
 
 from dk64_lib.file_io import get_bytes, get_long, get_char
+
+from construct import Struct, Int16ub, Int8ub
+
+Vertex = Struct(
+    "x" / Int16ub,
+    "y" / Int16ub,
+    "z" / Int16ub,
+    "unk" / Int16ub,
+    "texture_cord_u" / Int16ub,
+    "texture_cord_v" / Int16ub,
+    "xr" / Int8ub,
+    "yg" / Int8ub,
+    "zb" / Int8ub,
+    "alpha" / Int8ub,
+)
+
+Triangle = Struct(
+    "v1" / Int8ub,
+    "v2" / Int8ub,
+    "v3" / Int8ub,
+)
 
 
 class DisplayListExpansion:

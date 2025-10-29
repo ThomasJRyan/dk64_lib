@@ -9,7 +9,7 @@ from collada import Collada, source, material, geometry, scene
 
 from dk64_lib.data_types.base import BaseData
 from dk64_lib.f3dex2.display_list import (
-    DisplayList,
+    # DisplayList,
     DisplayListChunkData,
     DisplayListExpansion,
     create_display_lists,
@@ -17,6 +17,93 @@ from dk64_lib.f3dex2.display_list import (
 from dk64_lib.file_io import get_bytes, get_long
 
 POINTER_PATTERN = re.compile(b'\x00[\x00-\xFF]\x08\x00\x00\x00\x00\x00')
+
+from construct import Struct, Int32ub, Int16ub, Int8ub, Bytes, this, GreedyBytes, Pointer, Array, StopIf, Sequence, RepeatUntil, Bit, Switch, Byte, Computed, GreedyRange
+
+G_SPNOOP = Struct(
+    "_unused" / Bytes(7),
+)
+
+G_DL = Struct(
+    "store_return" / Bit,
+    "_unused" / Int16ub,
+    "branch_address" / Int32ub,
+)
+
+G_ENDDL = Struct(
+    "_unused" / Bytes(7),
+)
+
+G_TRI1 = Struct(
+    "v1" / Int8ub,
+    "v2" / Int8ub,
+    "v3" / Int8ub,
+    "_unused" / Bytes(4),
+)
+
+G_TRI2 = Struct(
+    "v1" / Int8ub,
+    "v2" / Int8ub,
+    "v3" / Int8ub,
+    "_unused" / Int8ub,
+    "v4" / Int8ub,
+    "v5" / Int8ub,
+    "v6" / Int8ub,
+)
+
+GeneralCommand = Struct(
+    "opcode" / Bytes(1),
+    "data" / Switch(this.opcode, {
+        b'\x00': G_SPNOOP,
+        b'\x05': G_TRI1,
+        b'\x06': G_TRI2,
+        b'\xDE': G_DL,
+        b'\xDF': G_ENDDL,
+    }, default=Bytes(7)),
+)
+
+DisplayList = Struct(
+    "commands" / RepeatUntil(lambda obj, lst, ctx: obj.opcode == b"\xDF", GeneralCommand),
+)
+
+Triangle = Struct(
+    "v1" / Int8ub,
+    "v2" / Int8ub,
+    "v3" / Int8ub,
+)
+
+Vertex = Struct(
+    "x" / Int16ub,
+    "y" / Int16ub,
+    "z" / Int16ub,
+    "unk" / Int16ub,
+    "texture_cord_u" / Int16ub,
+    "texture_cord_v" / Int16ub,
+    "xr" / Int8ub,
+    "yg" / Int8ub,
+    "zb" / Int8ub,
+    "alpha" / Int8ub,
+)
+
+GeometryHeader = Struct(
+    "unknown1" / Bytes(0x34),
+    "dl_start" / Int32ub,
+    "vert_start" / Int32ub,
+    "unknown2" / Int32ub,
+    "unknown_start1" / Int32ub,
+    "vert_length" / Computed(lambda ctx: ctx.unknown_start1 - ctx.vert_start),
+    "unknown3" / Bytes(0x24),
+    "vert_chunk_start" / Int32ub,
+    "unknown_start2" / Int32ub,
+    "vert_chunk_length" / Computed(lambda ctx: ctx.unknown_start2 - ctx.vert_chunk_start),
+    "dl_expansion_start" / Int32ub,
+)
+
+Geometry = Struct(
+    "header" / GeometryHeader,
+    "display_lists" / Pointer(this.header.dl_start, GreedyRange(DisplayList)),
+    "vertex_data" / Pointer(this.header.vert_start, Array(this.header.vert_length // 16, Vertex)),
+)
 
 class GeometryData(BaseData):
     def __post_init__(self):
@@ -26,28 +113,30 @@ class GeometryData(BaseData):
             self.is_pointer = True
         self.points_to = None
 
-        # Use a temporary file to allow us to seek throughout it
-        with TemporaryFile() as data_file:
-            data_file.write(self.raw_data)
-            data_file.seek(0)
+        self.data = Geometry.parse(self.raw_data)
 
-            # Get the display list and vertex starts
-            self.dl_start = get_long(data_file, 0x34)
-            self.vert_start = get_long(data_file, 0x38)
+        # # Use a temporary file to allow us to seek throughout it
+        # with TemporaryFile() as data_file:
+        #     data_file.write(self.raw_data)
+        #     data_file.seek(0)
 
-            # ! I don't know what this is pointing to, but it signifies the end of the
-            # ! vertex data which is importent
-            _unknown_start = get_long(data_file, 0x40)
-            self.vert_length = _unknown_start - self.vert_start
+        #     # Get the display list and vertex starts
+        #     self.dl_start = get_long(data_file, 0x34)
+        #     self.vert_start = get_long(data_file, 0x38)
 
-            self.vert_chunk_start = get_long(data_file, 0x68)
+        #     # ! I don't know what this is pointing to, but it signifies the end of the
+        #     # ! vertex data which is importent
+        #     _unknown_start = get_long(data_file, 0x40)
+        #     self.vert_length = _unknown_start - self.vert_start
 
-            # ! I don't know what this is pointing to, but it signifies the end of the
-            # ! vertex chunk data which is importent
-            _unknown_start = get_long(data_file, 0x6C)
-            self.vert_chunk_length = _unknown_start - self.vert_chunk_start
+        #     self.vert_chunk_start = get_long(data_file, 0x68)
 
-            self.dl_expansion_start = get_long(data_file, 0x70)
+        #     # ! I don't know what this is pointing to, but it signifies the end of the
+        #     # ! vertex chunk data which is importent
+        #     _unknown_start = get_long(data_file, 0x6C)
+        #     self.vert_chunk_length = _unknown_start - self.vert_chunk_start
+
+        #     self.dl_expansion_start = get_long(data_file, 0x70)
 
     @property
     def pointer(self):
