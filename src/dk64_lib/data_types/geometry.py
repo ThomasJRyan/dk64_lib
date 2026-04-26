@@ -204,18 +204,18 @@ class GeometryData(BaseData):
         src_vertices = source.FloatSource("geo-vertices", numpy_array(vertex_data), ('X', 'Y', 'Z'))
         src_vertices_colour = source.FloatSource('vertex-colours', numpy_array(vertex_colour_data), ('R', 'G', 'B', 'A'))
         
-        # Create a geometry with the data points
-        geom = geometry.Geometry(mesh, "geometry0", "map", [src_vertices, src_vertices_colour])
-        mesh.geometries.append(geom)
-        
-        # Create a triangle set and append it to the geometry
-        triset = geom.createTriangleSet(numpy_array(triangle_data), input_list, "vertex-material")
-        geom.primitives.append(triset)
-
         # The input list is used to define the vertices and colours 
         input_list = source.InputList()
         input_list.addInput(0, 'VERTEX', "#geo-vertices")
         input_list.addInput(0, 'COLOR', '#vertex-colours')
+
+        # Create a geometry with the data points
+        geom = geometry.Geometry(mesh, "geometry0", "map", [src_vertices, src_vertices_colour])
+        mesh.geometries.append(geom)
+
+        # Create a triangle set and append it to the geometry
+        triset = geom.createTriangleSet(numpy_array(triangle_data), input_list, "vertex-material")
+        geom.primitives.append(triset)
         
         # Create the phong effect and material using the vertex colours
         effect = material.Effect('vertex-effect', [], 'phong', diffuse=src_vertices_colour)

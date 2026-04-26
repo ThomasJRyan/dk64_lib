@@ -3,6 +3,7 @@ import glob
 import unittest
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from dk64_lib.rom import Rom
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
@@ -55,6 +56,19 @@ class RomTest(unittest.TestCase):
         self.assertEqual(geometry_table.offset, 4443108)
         self.assertEqual(geometry_table.size, 8)
         self.assertEqual(len(geometry_table.display_lists), 0)
+
+    def test_geometry_dae_export(self):
+        geometry_table = self.rom.geometry_tables[0]
+        dae = geometry_table.create_dae()
+
+        self.assertEqual(len(dae.geometries), 1)
+        self.assertEqual(len(dae.geometries[0].primitives), 1)
+
+        with TemporaryDirectory() as temp_dir:
+            geometry_table.save_to_dae("0.dae", temp_dir)
+            dae_path = Path(temp_dir) / "0.dae"
+            self.assertTrue(dae_path.exists())
+            self.assertGreater(dae_path.stat().st_size, 0)
 
 
 class FileIOTest(unittest.TestCase):
