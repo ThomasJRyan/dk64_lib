@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from dk64_lib.rom import Rom
+from dk64_lib.rom import Rom, TableEntry
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
@@ -56,6 +56,36 @@ class RomTest(unittest.TestCase):
         self.assertEqual(geometry_table.offset, 4443108)
         self.assertEqual(geometry_table.size, 8)
         self.assertEqual(len(geometry_table.display_lists), 0)
+
+    def test_geometry_table_entries(self):
+        table_offset = 1
+        table_size = get_long(
+            self.rom.rom_fh,
+            self.rom.pointer_table_offset + (32 * 4) + (table_offset * 4),
+        )
+        table_start = self.rom.pointer_table_offset + get_long(
+            self.rom.rom_fh, self.rom.pointer_table_offset + (table_offset * 4)
+        )
+        entries = self.rom._read_table_entries(table_start, table_size)
+        nonempty_entries = [entry for entry in entries if not entry.is_empty]
+
+        self.assertEqual(len(entries), 221)
+        self.assertEqual(len(nonempty_entries), 216)
+        self.assertIsInstance(entries[0], TableEntry)
+        self.assertEqual(entries[0].index, 0)
+        self.assertEqual(entries[0].start, 1386148)
+        self.assertEqual(entries[0].size, 930)
+        self.assertEqual(nonempty_entries[-1].start, 4443108)
+        self.assertEqual(nonempty_entries[-1].size, 8)
+
+    def test_rom_table_data_can_be_generated_multiple_times(self):
+        first_pass = list(self.rom.generate_rom_table_data([1]))
+        second_pass = list(self.rom.generate_rom_table_data([1]))
+
+        self.assertEqual(len(first_pass), 216)
+        self.assertEqual(len(second_pass), 216)
+        self.assertEqual(first_pass[0]["offset"], second_pass[0]["offset"])
+        self.assertEqual(first_pass[-1]["offset"], second_pass[-1]["offset"])
 
     def test_geometry_dae_export(self):
         geometry_table = self.rom.geometry_tables[0]

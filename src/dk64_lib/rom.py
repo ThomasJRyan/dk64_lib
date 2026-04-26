@@ -1,6 +1,6 @@
-import os
 import zlib
 
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryFile
 from functools import cache, cached_property
@@ -9,6 +9,21 @@ from typing import Literal, Generator
 
 from dk64_lib.data_types import TextureData, TextData, CutsceneData, GeometryData
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
+
+
+@dataclass(frozen=True)
+class TableEntry:
+    index: int
+    start: int
+    finish: int
+
+    @property
+    def size(self) -> int:
+        return self.finish - self.start
+
+    @property
+    def is_empty(self) -> bool:
+        return self.size == 0
 
 
 class Rom:
@@ -97,6 +112,20 @@ class Rom:
         return [geometry_data for geometry_data in self.get_geometry_data()]
 
     @cache
+    def _read_table_entries(self, start: int, size: int) -> tuple[TableEntry, ...]:
+        """Read all pointer entries for a table."""
+        entries = list()
+        for entry_index in range(size):
+            pointer_offset = start + (entry_index * 4)
+            entry_start = self.pointer_table_offset + (
+                get_long(self.rom_fh, pointer_offset) & 0x7FFFFFFF
+            )
+            entry_finish = self.pointer_table_offset + (
+                get_long(self.rom_fh, pointer_offset + 4) & 0x7FFFFFFF
+            )
+            entries.append(TableEntry(entry_index, entry_start, entry_finish))
+        return tuple(entries)
+
     def _extract_table_data(self, start: int, size: int) -> Generator[dict, None, None]:
         """An internal generator for extracting the data that a table points to
 
@@ -107,29 +136,19 @@ class Rom:
         Yields:
             Generator[dict, None, None]: The data the table entry points to
         """
-        for entry in range(size):
-            entry_start = self.pointer_table_offset + (
-                get_long(self.rom_fh, start + (entry * 4)) & 0x7FFFFFFF
-            )
-            entry_finish = self.pointer_table_offset + (
-                get_long(
-                    self.rom_fh,
-                )
-                & 0x7FFFFFFF
-            )
-            entry_size = entry_finish - entry_start
-            if not entry_size:
+        for entry in self._read_table_entries(start, size):
+            if entry.is_empty:
                 continue
-            indic = get_short(self.rom_fh, entry_start)
-            table_data = get_bytes(self.rom_fh, entry_size, entry_start)
+            indic = get_short(self.rom_fh, entry.start)
+            table_data = get_bytes(self.rom_fh, entry.size, entry.start)
             if indic == 0x1F8B:
                 table_data = zlib.decompress(table_data, (15 + 32))
             if not table_data:
                 continue
             yield dict(
                 raw_data=table_data,
-                offset=entry_start,
-                size=entry_size,
+                offset=entry.start,
+                size=entry.size,
                 was_compressed=True if indic == 0x1F8B else False,
                 rom=self,
             )
