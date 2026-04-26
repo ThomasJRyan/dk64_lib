@@ -1,12 +1,10 @@
 import re
 import pathlib
 
-from dataclasses import dataclass
-from tempfile import TemporaryFile
-
 from numpy import array as numpy_array
 from collada import Collada, source, material, geometry, scene
 
+from dk64_lib.binary_reader import BinaryReader
 from dk64_lib.data_types.base import BaseData
 from dk64_lib.f3dex2.display_list import (
     DisplayList,
@@ -14,7 +12,6 @@ from dk64_lib.f3dex2.display_list import (
     DisplayListExpansion,
     create_display_lists,
 )
-from dk64_lib.file_io import get_bytes, get_long
 
 POINTER_PATTERN = re.compile(b'\x00[\x00-\xFF]\x08\x00\x00\x00\x00\x00')
 
@@ -26,28 +23,34 @@ class GeometryData(BaseData):
             self.is_pointer = True
         self.points_to = None
 
-        # Use a temporary file to allow us to seek throughout it
-        with TemporaryFile() as data_file:
-            data_file.write(self.raw_data)
-            data_file.seek(0)
+        self.dl_start = 0
+        self.vert_start = 0
+        self.vert_length = 0
+        self.vert_chunk_start = 0
+        self.vert_chunk_length = 0
+        self.dl_expansion_start = 0
+        if self.is_pointer:
+            return
 
-            # Get the display list and vertex starts
-            self.dl_start = get_long(data_file, 0x34)
-            self.vert_start = get_long(data_file, 0x38)
+        reader = BinaryReader(self.raw_data)
 
-            # ! I don't know what this is pointing to, but it signifies the end of the
-            # ! vertex data which is importent
-            _unknown_start = get_long(data_file, 0x40)
-            self.vert_length = _unknown_start - self.vert_start
+        # Get the display list and vertex starts
+        self.dl_start = reader.read_u32(0x34)
+        self.vert_start = reader.read_u32(0x38)
 
-            self.vert_chunk_start = get_long(data_file, 0x68)
+        # ! I don't know what this is pointing to, but it signifies the end of the
+        # ! vertex data which is importent
+        _unknown_start = reader.read_u32(0x40)
+        self.vert_length = _unknown_start - self.vert_start
 
-            # ! I don't know what this is pointing to, but it signifies the end of the
-            # ! vertex chunk data which is importent
-            _unknown_start = get_long(data_file, 0x6C)
-            self.vert_chunk_length = _unknown_start - self.vert_chunk_start
+        self.vert_chunk_start = reader.read_u32(0x68)
 
-            self.dl_expansion_start = get_long(data_file, 0x70)
+        # ! I don't know what this is pointing to, but it signifies the end of the
+        # ! vertex chunk data which is importent
+        _unknown_start = reader.read_u32(0x6C)
+        self.vert_chunk_length = _unknown_start - self.vert_chunk_start
+
+        self.dl_expansion_start = reader.read_u32(0x70)
 
     @property
     def pointer(self):
@@ -65,13 +68,12 @@ class GeometryData(BaseData):
         if self.is_pointer:
             return list()
         ret_list = list()
-        with TemporaryFile() as data_file:
-            data_file.write(self.raw_data)
-            data_file.seek(self.dl_expansion_start)
-
-            expansion_count = get_long(data_file)
-            for _ in range(expansion_count):
-                ret_list.append(DisplayListExpansion(get_bytes(data_file, 0x10)))
+        reader = BinaryReader(self.raw_data)
+        expansion_count = reader.read_u32(self.dl_expansion_start)
+        expansion_start = self.dl_expansion_start + 4
+        for expansion_num in range(expansion_count):
+            offset = expansion_start + expansion_num * 0x10
+            ret_list.append(DisplayListExpansion(reader.read_at(offset, 0x10)))
 
         return ret_list
 

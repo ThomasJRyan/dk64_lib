@@ -3,10 +3,11 @@ from tempfile import TemporaryFile
 from dk64_lib.components.vertex import Vertex
 from dk64_lib.components.triangle import Triangle
 
+from dk64_lib.binary_reader import BinaryReader
 from dk64_lib.f3dex2 import commands
 from dk64_lib.f3dex2.commands import get_command, DL_Command
 
-from dk64_lib.file_io import get_bytes, get_long, get_char
+from dk64_lib.file_io import get_bytes
 
 
 class DisplayListExpansion:
@@ -23,14 +24,11 @@ class DisplayListExpansion:
         self._parse_data()
 
     def _parse_data(self):
-        with TemporaryFile() as data_file:
-            data_file.write(self._raw_data)
-            data_file.seek(0)
-
-            self.unknown_1 = get_long(data_file)
-            self.unknown_2 = get_long(data_file)
-            self.display_list_offset = get_long(data_file)
-            self.unknown_4 = get_long(data_file)
+        reader = BinaryReader(self._raw_data)
+        self.unknown_1 = reader.read_u32(0)
+        self.unknown_2 = reader.read_u32(4)
+        self.display_list_offset = reader.read_u32(8)
+        self.unknown_4 = reader.read_u32(12)
 
 
 class DisplayListChunkData:
@@ -39,26 +37,23 @@ class DisplayListChunkData:
         self._parse_data()
 
     def _parse_data(self):
-        with TemporaryFile() as data_file:
-            data_file.write(self._raw_data)
-            data_file.seek(0)
-
-            self.r = get_char(data_file)
-            self.g = get_char(data_file)
-            self.b = get_char(data_file)
-            self.unknown_char = get_char(data_file)
-            self.mips_instruction = get_bytes(data_file, 4)
-            self.unknown_flag = get_long(data_file)
-            self.dl_1_start = get_long(data_file)
-            self.dl_1_size = get_long(data_file)
-            self.dl_2_start = get_long(data_file)
-            self.dl_2_size = get_long(data_file)
-            self.dl_3_start = get_long(data_file)
-            self.dl_3_size = get_long(data_file)
-            self.dl_4_start = get_long(data_file)
-            self.dl_4_size = get_long(data_file)
-            self.vertex_start = get_long(data_file)
-            self.vertex_size = get_long(data_file)
+        reader = BinaryReader(self._raw_data)
+        self.r = reader.read_u8(0)
+        self.g = reader.read_u8(1)
+        self.b = reader.read_u8(2)
+        self.unknown_char = reader.read_u8(3)
+        self.mips_instruction = reader.read_at(4, 4)
+        self.unknown_flag = reader.read_u32(8)
+        self.dl_1_start = reader.read_u32(12)
+        self.dl_1_size = reader.read_u32(16)
+        self.dl_2_start = reader.read_u32(20)
+        self.dl_2_size = reader.read_u32(24)
+        self.dl_3_start = reader.read_u32(28)
+        self.dl_3_size = reader.read_u32(32)
+        self.dl_4_start = reader.read_u32(36)
+        self.dl_4_size = reader.read_u32(40)
+        self.vertex_start = reader.read_u32(44)
+        self.vertex_size = reader.read_u32(48)
 
     @property
     def vertex_start_size(self) -> dict[int, int]:
