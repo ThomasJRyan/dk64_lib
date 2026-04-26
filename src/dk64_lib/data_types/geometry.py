@@ -174,7 +174,7 @@ class GeometryData(BaseData):
         texture_folder: str = "textures",
     ) -> TexturedObjExport:
         """Creates OBJ, MTL, and texture image data for this geometry."""
-        texture_data = self.rom.get_texture_data() if self.rom else tuple()
+        texture_data = self.rom.get_geometry_texture_data() if self.rom else tuple()
         exporter = TexturedObjExporter(texture_data)
         return exporter.export(
             self.display_lists,

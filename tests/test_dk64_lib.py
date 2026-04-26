@@ -47,6 +47,12 @@ class RomTest(unittest.TestCase):
         self.assertIsInstance(cutscene_data[0], CutsceneData)
         self.assertEqual(cutscene_data[0].data_type, "Cutscene")
 
+    def test_geometry_texture_data_uses_geometry_texture_table(self):
+        texture_data = self.rom.get_geometry_texture_data()
+
+        self.assertEqual(len(texture_data), 6011)
+        self.assertEqual(texture_data[0].offset, 18429500)
+
     def test_geometry_data(self):
         self.assertEqual(len(self.rom.geometry_tables), 216)
 

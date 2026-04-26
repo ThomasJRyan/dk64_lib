@@ -187,6 +187,14 @@ class Rom:
         return texture_data
 
     @cache
+    def get_geometry_texture_data(self) -> list[TextureData]:
+        """Fetch texture data referenced by map geometry display lists."""
+        return [
+            TextureData(**table_data)
+            for table_data in self.generate_rom_table_data([25])
+        ]
+
+    @cache
     def get_text_data(self) -> list[TextData]:
         """A function for fetching the text data
 
