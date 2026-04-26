@@ -356,6 +356,11 @@ class DisplayListCommandTest(unittest.TestCase):
 
         self.assertIsInstance(command, commands.G_TRI1)
 
+    def test_get_command_returns_none_for_unknown_opcode(self):
+        command = commands.get_command(b"\x08\x00\x00\x00\x00\x00\x00\x00")
+
+        self.assertIsNone(command)
+
     def test_registered_commands_parse_minimal_buffers(self):
         for opcode, command_type in commands.DL_COMMANDS.items():
             with self.subTest(opcode=opcode.hex()):

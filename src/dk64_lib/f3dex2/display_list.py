@@ -362,6 +362,9 @@ def create_display_lists(
                 # Write the command bytes. This will become our DisplayList's _raw_data
                 raw_data += command_bytes
 
+                if cmd is None:
+                    continue
+
                 # * Handle branching display lists
                 if cmd.opcode == b"\xDE":
 

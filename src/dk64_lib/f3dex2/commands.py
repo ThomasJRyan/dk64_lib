@@ -1,8 +1,17 @@
-import re
-
 from typing import Union
 
 from dk64_lib.binary_reader import BinaryReader
+
+
+def _init_command(command_obj, command: bytes) -> BinaryReader:
+    reader = BinaryReader(command)
+    command_obj._raw_data = command
+    command_obj.opcode = reader.read_at(0, 1)
+    return reader
+
+
+def _word_pair(reader: BinaryReader) -> tuple[int, int]:
+    return reader.read_u32(0), reader.read_u32(4)
 
 
 def _u24(reader: BinaryReader, offset: int) -> int:
@@ -14,18 +23,70 @@ def _sign_extend(value: int, bits: int) -> int:
     return (value ^ sign_bit) - sign_bit
 
 
+def _vertex_index(reader: BinaryReader, offset: int) -> int:
+    return reader.read_u8(offset) // 2
+
+
+def _packed_coordinate_pair(word: int) -> tuple[int, int]:
+    return (word >> 12) & 0xFFF, word & 0xFFF
+
+
+def _decode_textured_rectangle(reader: BinaryReader) -> tuple[int, int, int, int, int]:
+    word0, word1 = _word_pair(reader)
+    lrx, lry = _packed_coordinate_pair(word0)
+    ulx, uly = _packed_coordinate_pair(word1)
+    return lrx, lry, (word1 >> 24) & 0x7, ulx, uly
+
+
+def _decode_fill_rectangle(reader: BinaryReader) -> tuple[int, int, int, int]:
+    word0, word1 = _word_pair(reader)
+    lrx, lry = _packed_coordinate_pair(word0)
+    ulx, uly = _packed_coordinate_pair(word1)
+    return lrx, lry, ulx, uly
+
+
+def _decode_tile_coordinates(reader: BinaryReader) -> tuple[int, int, int, int, int]:
+    word0, word1 = _word_pair(reader)
+    uls, ult = _packed_coordinate_pair(word0)
+    lrs, lrt = _packed_coordinate_pair(word1)
+    return uls, ult, (word1 >> 24) & 0x7, lrs, lrt
+
+
+def _decode_rgba(reader: BinaryReader) -> tuple[int, int, int, int]:
+    return (
+        reader.read_u8(4),
+        reader.read_u8(5),
+        reader.read_u8(6),
+        reader.read_u8(7),
+    )
+
+
+def _decode_image(reader: BinaryReader) -> tuple[int, int, int, int]:
+    image_type = reader.read_u8(1)
+    return (
+        (image_type >> 5) & 0x7,
+        (image_type >> 3) & 0x3,
+        (reader.read_u16(2) & 0x0FFF) + 1,
+        reader.read_u32(4),
+    )
+
+
+class _NoPayloadCommand:
+    __slots__ = ("_raw_data", "opcode")
+
+    def __init__(self, command: bytes):
+        _init_command(self, command)
+
+
 class G_SPNOOP:
     __slots__ = ("_raw_data", "opcode", "tag")
-    parse_pattern = re.compile(b"(?P<opcode>\x00)(?P<tag>[\x00-\xFF]{7})")
 
     def __repr__(self):
         return f"G_SPNOOP(0x{self.tag.hex()})"
 
     def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self._raw_data = command
-        self.opcode = group["opcode"]
-        self.tag = group["tag"]
+        reader = _init_command(self, command)
+        self.tag = reader.read_at(1, 7)
 
 
 class G_VTX:
@@ -42,9 +103,7 @@ class G_VTX:
         return f"G_VTX({self.vertex_count}, {self.buffer_start}, {self.address.hex()})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self._raw_data = command
-        self.opcode = reader.read_at(0, 1)
+        reader = _init_command(self, command)
         self.vertex_count = (reader.read_u16(1) >> 4) & 0xFF
         self.buffer_start = reader.read_u8(3) - self.vertex_count * 2
         self.segment = reader.read_at(4, 1)
@@ -58,9 +117,7 @@ class G_MODIFYVTX:
         return f"G_MODIFYVTX({self.vertex_index}, 0x{self.where:02x}, 0x{self.value:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.where = reader.read_u8(1)
         self.vertex_index = reader.read_u16(2) // 2
         self.value = reader.read_u32(4)
@@ -73,9 +130,7 @@ class G_CULLDL:
         return f"G_CULLDL({self.vfirst}, {self.vlast})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.vfirst = reader.read_u16(2) // 2
         self.vlast = reader.read_u16(6) // 2
 
@@ -93,10 +148,8 @@ class G_BRANCH_Z:
         return f"G_BRANCH_Z({self.vertex_index_a}, {self.z_value})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
+        reader = _init_command(self, command)
         vertex_fields = _u24(reader, 1)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
         self.vertex_index_a = ((vertex_fields >> 12) & 0xFFF) // 5
         self.vertex_index_b = (vertex_fields & 0xFFF) // 2
         self.z_value = reader.read_u32(4)
@@ -109,12 +162,10 @@ class G_TRI1:
         return f"G_TRI1({self.v1}, {self.v2}, {self.v3})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.v1 = reader.read_u8(1) // 2
-        self.v2 = reader.read_u8(2) // 2
-        self.v3 = reader.read_u8(3) // 2
+        reader = _init_command(self, command)
+        self.v1 = _vertex_index(reader, 1)
+        self.v2 = _vertex_index(reader, 2)
+        self.v3 = _vertex_index(reader, 3)
 
 
 class G_TRI2:
@@ -124,15 +175,13 @@ class G_TRI2:
         return f"G_TRI2(({self.v1}, {self.v2}, {self.v3}), ({self.v4}, {self.v5}, {self.v6}))"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.v1 = reader.read_u8(1) // 2
-        self.v2 = reader.read_u8(2) // 2
-        self.v3 = reader.read_u8(3) // 2
-        self.v4 = reader.read_u8(5) // 2
-        self.v5 = reader.read_u8(6) // 2
-        self.v6 = reader.read_u8(7) // 2
+        reader = _init_command(self, command)
+        self.v1 = _vertex_index(reader, 1)
+        self.v2 = _vertex_index(reader, 2)
+        self.v3 = _vertex_index(reader, 3)
+        self.v4 = _vertex_index(reader, 5)
+        self.v5 = _vertex_index(reader, 6)
+        self.v6 = _vertex_index(reader, 7)
 
 
 class G_QUAD:
@@ -151,54 +200,34 @@ class G_QUAD:
         return f"G_QUAD({self.v1}, {self.v2}, {self.v3}, {self.v4})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.v1 = reader.read_u8(1) // 2
-        self.v2 = reader.read_u8(2) // 2
-        self.v3 = reader.read_u8(3) // 2
-        self.v1_duplicate = reader.read_u8(5) // 2
-        self.v3_duplicate = reader.read_u8(6) // 2
-        self.v4 = reader.read_u8(7) // 2
+        reader = _init_command(self, command)
+        self.v1 = _vertex_index(reader, 1)
+        self.v2 = _vertex_index(reader, 2)
+        self.v3 = _vertex_index(reader, 3)
+        self.v1_duplicate = _vertex_index(reader, 5)
+        self.v3_duplicate = _vertex_index(reader, 6)
+        self.v4 = _vertex_index(reader, 7)
 
 
-class G_SPECIAL_3:
-    __slots__ = ("_raw_data", "opcode")
-    parse_pattern = re.compile(b"(?P<opcode>\xD3)")
+class G_SPECIAL_3(_NoPayloadCommand):
+    __slots__ = ()
 
     def __repr__(self):
         return f"G_SPECIAL_3()"
 
-    def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
-        self._raw_data = command
 
-
-class G_SPECIAL_2:
-    __slots__ = ("_raw_data", "opcode")
-    parse_pattern = re.compile(b"(?P<opcode>\xD4)")
+class G_SPECIAL_2(_NoPayloadCommand):
+    __slots__ = ()
 
     def __repr__(self):
         return f"G_SPECIAL_2()"
 
-    def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
-        self._raw_data = command
 
-
-class G_SPECIAL_1:
-    __slots__ = ("_raw_data", "opcode")
-    parse_pattern = re.compile(b"(?P<opcode>\xD5)")
+class G_SPECIAL_1(_NoPayloadCommand):
+    __slots__ = ()
 
     def __repr__(self):
         return f"G_SPECIAL_1()"
-
-    def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
-        self._raw_data = command
 
 
 class G_DMA_IO:
@@ -208,11 +237,9 @@ class G_DMA_IO:
         return f"G_DMA_IO({self.flag}, {self.dmem}, 0x{self.dram:08x}, {self.size})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
+        reader = _init_command(self, command)
         control = _u24(reader, 1)
         dmem_field = (control >> 12) & 0xFFF
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
         self.flag = (dmem_field >> 11) & 0x1
         self.dmem = ((dmem_field >> 1) & 0x3FF) * 8
         self.size = (control & 0xFFF) + 1
@@ -226,10 +253,8 @@ class G_TEXTURE:
         return f"G_TEXTURE({self.scale_s}, {self.scale_t}, {self.level}, {self.tile}, {self.on})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
+        reader = _init_command(self, command)
         parameters = reader.read_u16(2)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
         self.level = (parameters >> 11) & 0x7
         self.tile = (parameters >> 8) & 0x7
         self.on = (parameters >> 1) & 0x7F
@@ -244,9 +269,7 @@ class G_POPMTX:
         return f"G_POPMTX({self.num_matrices})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.num_matrices = reader.read_u32(4) // 64
 
 
@@ -257,9 +280,7 @@ class G_GEOMETRYMODE:
         return f"G_GEOMETRYMODE(0x{self.clear_bits:06x}, 0x{self.set_bits:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.clear_bits = (~(reader.read_u32(0) & 0x00FFFFFF)) & 0x00FFFFFF
         self.set_bits = reader.read_u32(4)
 
@@ -271,9 +292,7 @@ class G_MTX:
         return f"G_MTX(0x{self.address:08x}, 0x{self.params:02x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.params = reader.read_u8(3) ^ 0x1
         self.address = reader.read_u32(4)
 
@@ -285,9 +304,7 @@ class G_MOVEWORD:
         return f"G_MOVEWORD(0x{self.index:02x}, 0x{self.offset:04x}, 0x{self.data:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.index = reader.read_u8(1)
         self.offset = reader.read_u16(2)
         self.data = reader.read_u32(4)
@@ -300,9 +317,7 @@ class G_MOVEMEM:
         return f"G_MOVEMEM({self.size}, 0x{self.index:02x}, {self.offset}, 0x{self.address:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.size = ((reader.read_u8(1) >> 3) + 1) * 8
         self.offset = reader.read_u8(2) * 8
         self.index = reader.read_u8(3)
@@ -316,9 +331,7 @@ class G_LOAD_UCODE:
         return f"G_LOAD_UCODE(0x{self.text_start:08x}, {self.data_size})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.data_size = reader.read_u16(2)
         self.text_start = reader.read_u32(4)
 
@@ -330,37 +343,24 @@ class G_DL:
         return f"G_DL({self.store_return_address}, {self.address})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.store_return_address = reader.read_u8(1) == 0
         self.segment = reader.read_at(4, 1)
         self.address = reader.read_at(5, 3)
 
 
-class G_ENDDL:
-    __slots__ = ("_raw_data", "opcode")
+class G_ENDDL(_NoPayloadCommand):
+    __slots__ = ()
 
     def __repr__(self):
         return f"G_ENDDL()"
 
-    def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
 
-
-class G_NOOP:
-    __slots__ = ("_raw_data", "opcode")
-    parse_pattern = re.compile(b"(?P<opcode>\xE0)")
+class G_NOOP(_NoPayloadCommand):
+    __slots__ = ()
 
     def __repr__(self):
         return f"G_NOOP()"
-
-    def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
-        self._raw_data = command
 
 
 class G_RDPHALF_1:
@@ -370,9 +370,7 @@ class G_RDPHALF_1:
         return f"G_RDPHALF_1(0x{self.word:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.word = reader.read_u32(4)
 
 
@@ -383,9 +381,7 @@ class G_SetOtherMode_L:
         return f"G_SetOtherMode_L({self.shift}, {self.length}, 0x{self.data:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.encoded_shift = reader.read_u8(2)
         self.length = reader.read_u8(3) + 1
         self.shift = 32 - self.length - self.encoded_shift
@@ -399,9 +395,7 @@ class G_SetOtherMode_H:
         return f"G_SetOtherMode_H({self.shift}, {self.length}, 0x{self.data:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.encoded_shift = reader.read_u8(2)
         self.length = reader.read_u8(3) + 1
         self.shift = 32 - self.length - self.encoded_shift
@@ -415,16 +409,10 @@ class G_TEXRECT:
         return f"G_TEXRECT({self.ulx}, {self.uly}, {self.lrx}, {self.lry}, {self.tile})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.lrx = (word0 >> 12) & 0xFFF
-        self.lry = word0 & 0xFFF
-        self.tile = (word1 >> 24) & 0x7
-        self.ulx = (word1 >> 12) & 0xFFF
-        self.uly = word1 & 0xFFF
+        reader = _init_command(self, command)
+        self.lrx, self.lry, self.tile, self.ulx, self.uly = (
+            _decode_textured_rectangle(reader)
+        )
 
 
 class G_TEXRECTFLIP:
@@ -434,68 +422,38 @@ class G_TEXRECTFLIP:
         return f"G_TEXRECTFLIP({self.ulx}, {self.uly}, {self.lrx}, {self.lry}, {self.tile})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.lrx = (word0 >> 12) & 0xFFF
-        self.lry = word0 & 0xFFF
-        self.tile = (word1 >> 24) & 0x7
-        self.ulx = (word1 >> 12) & 0xFFF
-        self.uly = word1 & 0xFFF
+        reader = _init_command(self, command)
+        self.lrx, self.lry, self.tile, self.ulx, self.uly = (
+            _decode_textured_rectangle(reader)
+        )
 
 
-class G_RDPLOADSYNC:
-    __slots__ = ("_raw_data", "opcode")
-    parse_pattern = re.compile(b"(?P<opcode>\xE6)")
+class G_RDPLOADSYNC(_NoPayloadCommand):
+    __slots__ = ()
 
     def __repr__(self):
         return f"G_RDPLOADSYNC()"
 
-    def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
-        self._raw_data = command
 
-
-class G_RDPPIPESYNC:
-    __slots__ = ("_raw_data", "opcode")
-    parse_pattern = re.compile(b"(?P<opcode>\xE7)")
+class G_RDPPIPESYNC(_NoPayloadCommand):
+    __slots__ = ()
 
     def __repr__(self):
         return f"G_RDPPIPESYNC()"
 
-    def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
-        self._raw_data = command
 
-
-class G_RDPTILESYNC:
-    __slots__ = ("_raw_data", "opcode")
-    parse_pattern = re.compile(b"(?P<opcode>\xE8)")
+class G_RDPTILESYNC(_NoPayloadCommand):
+    __slots__ = ()
 
     def __repr__(self):
         return f"G_RDPTILESYNC()"
 
-    def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
-        self._raw_data = command
 
-
-class G_RDPFULLSYNC:
-    __slots__ = ("_raw_data", "opcode")
-    parse_pattern = re.compile(b"(?P<opcode>\xE9)")
+class G_RDPFULLSYNC(_NoPayloadCommand):
+    __slots__ = ()
 
     def __repr__(self):
         return f"G_RDPFULLSYNC()"
-
-    def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
-        self._raw_data = command
 
 
 class G_SETKEYGB:
@@ -518,10 +476,8 @@ class G_SETKEYGB:
         )
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
+        reader = _init_command(self, command)
         word0 = reader.read_u32(0)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
         self.width_g = (word0 >> 12) & 0xFFF
         self.width_b = word0 & 0xFFF
         self.center_g = reader.read_u8(4)
@@ -537,10 +493,8 @@ class G_SETKEYR:
         return f"G_SETKEYR({self.center_r}, {self.scale_r}, {self.width_r})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
+        reader = _init_command(self, command)
         word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
         self.width_r = (word1 >> 16) & 0xFFF
         self.center_r = reader.read_u8(6)
         self.scale_r = reader.read_u8(7)
@@ -553,11 +507,8 @@ class G_SETCONVERT:
         return f"G_SETCONVERT({self.k0}, {self.k1}, {self.k2}, {self.k3}, {self.k4}, {self.k5})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
+        word0, word1 = _word_pair(reader)
         self.k0 = _sign_extend((word0 >> 13) & 0x1FF, 9)
         self.k1 = _sign_extend((word0 >> 4) & 0x1FF, 9)
         self.k2 = _sign_extend(((word0 & 0xF) << 5) | ((word1 >> 27) & 0x1F), 9)
@@ -573,16 +524,11 @@ class G_SETSCISSOR:
         return f"G_SETSCISSOR({self.mode}, {self.ulx}, {self.uly}, {self.lrx}, {self.lry})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.ulx = (word0 >> 12) & 0xFFF
-        self.uly = word0 & 0xFFF
+        reader = _init_command(self, command)
+        word0, word1 = _word_pair(reader)
+        self.ulx, self.uly = _packed_coordinate_pair(word0)
         self.mode = (word1 >> 24) & 0x3
-        self.lrx = (word1 >> 12) & 0xFFF
-        self.lry = word1 & 0xFFF
+        self.lrx, self.lry = _packed_coordinate_pair(word1)
 
 
 class G_SETPRIMDEPTH:
@@ -592,9 +538,7 @@ class G_SETPRIMDEPTH:
         return f"G_SETPRIMDEPTH({self.z}, {self.dz})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.z = reader.read_i16(4)
         self.dz = reader.read_i16(6)
 
@@ -606,11 +550,9 @@ class G_RDPSetOtherMode:
         return f"G_RDPSetOtherMode(0x{self.other_mode_h:06x}, 0x{self.other_mode_l:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.other_mode_h = reader.read_u32(0) & 0x00FFFFFF
-        self.other_mode_l = reader.read_u32(4)
+        reader = _init_command(self, command)
+        word0, self.other_mode_l = _word_pair(reader)
+        self.other_mode_h = word0 & 0x00FFFFFF
 
 
 class G_LOADTLUT:
@@ -620,10 +562,8 @@ class G_LOADTLUT:
         return f"G_LOADTLUT({self.tile}, {self.count})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
+        reader = _init_command(self, command)
         word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
         self.tile = (word1 >> 24) & 0x7
         self.count = ((word1 >> 12) & 0xFFF) >> 2
         self.color_count = self.count + 1
@@ -636,9 +576,7 @@ class G_RDPHALF_2:
         return f"G_RDPHALF_2(0x{self.word:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.word = reader.read_u32(4)
 
 
@@ -649,16 +587,10 @@ class G_SETTILESIZE:
         return f"G_SETTILESIZE({self.tile}, {self.uls}, {self.ult}, {self.lrs}, {self.lrt})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.uls = (word0 >> 12) & 0xFFF
-        self.ult = word0 & 0xFFF
-        self.tile = (word1 >> 24) & 0x7
-        self.lrs = (word1 >> 12) & 0xFFF
-        self.lrt = word1 & 0xFFF
+        reader = _init_command(self, command)
+        self.uls, self.ult, self.tile, self.lrs, self.lrt = (
+            _decode_tile_coordinates(reader)
+        )
 
 
 class G_LOADBLOCK:
@@ -668,13 +600,9 @@ class G_LOADBLOCK:
         return f"G_LOADBLOCK({self.tile}, {self.uls}, {self.ult}, {self.texels}, {self.dxt})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.uls = (word0 >> 12) & 0xFFF
-        self.ult = word0 & 0xFFF
+        reader = _init_command(self, command)
+        word0, word1 = _word_pair(reader)
+        self.uls, self.ult = _packed_coordinate_pair(word0)
         self.tile = (word1 >> 24) & 0x7
         self.texels = (word1 >> 12) & 0xFFF
         self.texel_count = self.texels + 1
@@ -688,16 +616,10 @@ class G_LOADTILE:
         return f"G_LOADTILE({self.tile}, {self.uls}, {self.ult}, {self.lrs}, {self.lrt})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.uls = (word0 >> 12) & 0xFFF
-        self.ult = word0 & 0xFFF
-        self.tile = (word1 >> 24) & 0x7
-        self.lrs = (word1 >> 12) & 0xFFF
-        self.lrt = word1 & 0xFFF
+        reader = _init_command(self, command)
+        self.uls, self.ult, self.tile, self.lrs, self.lrt = (
+            _decode_tile_coordinates(reader)
+        )
 
 
 class G_SETTILE:
@@ -722,11 +644,8 @@ class G_SETTILE:
         return f"G_SETTILE({self.tile}, {self.fmt}, {self.size}, {self.line}, {self.tmem})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
+        word0, word1 = _word_pair(reader)
         self.fmt = (word0 >> 21) & 0x7
         self.size = (word0 >> 19) & 0x3
         self.line = (word0 >> 9) & 0x1FF
@@ -748,15 +667,8 @@ class G_FILLRECT:
         return f"G_FILLRECT({self.ulx}, {self.uly}, {self.lrx}, {self.lry})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.lrx = (word0 >> 12) & 0xFFF
-        self.lry = word0 & 0xFFF
-        self.ulx = (word1 >> 12) & 0xFFF
-        self.uly = word1 & 0xFFF
+        reader = _init_command(self, command)
+        self.lrx, self.lry, self.ulx, self.uly = _decode_fill_rectangle(reader)
 
 
 class G_SETFILLCOLOR:
@@ -766,9 +678,7 @@ class G_SETFILLCOLOR:
         return f"G_SETFILLCOLOR(0x{self.color:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.color = reader.read_u32(4)
 
 
@@ -779,13 +689,8 @@ class G_SETFOGCOLOR:
         return f"G_SETFOGCOLOR({self.r}, {self.g}, {self.b}, {self.a})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.r = reader.read_u8(4)
-        self.g = reader.read_u8(5)
-        self.b = reader.read_u8(6)
-        self.a = reader.read_u8(7)
+        reader = _init_command(self, command)
+        self.r, self.g, self.b, self.a = _decode_rgba(reader)
 
 
 class G_SETBLENDCOLOR:
@@ -795,13 +700,8 @@ class G_SETBLENDCOLOR:
         return f"G_SETBLENDCOLOR({self.r}, {self.g}, {self.b}, {self.a})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.r = reader.read_u8(4)
-        self.g = reader.read_u8(5)
-        self.b = reader.read_u8(6)
-        self.a = reader.read_u8(7)
+        reader = _init_command(self, command)
+        self.r, self.g, self.b, self.a = _decode_rgba(reader)
 
 
 class G_SETPRIMCOLOR:
@@ -824,15 +724,10 @@ class G_SETPRIMCOLOR:
         )
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.min_level = reader.read_u8(2)
         self.lod_fraction = reader.read_u8(3)
-        self.r = reader.read_u8(4)
-        self.g = reader.read_u8(5)
-        self.b = reader.read_u8(6)
-        self.a = reader.read_u8(7)
+        self.r, self.g, self.b, self.a = _decode_rgba(reader)
 
 
 class G_SETENVCOLOR:
@@ -842,13 +737,8 @@ class G_SETENVCOLOR:
         return f"G_SETENVCOLOR({self.r}, {self.g}, {self.b}, {self.a})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.r = reader.read_u8(4)
-        self.g = reader.read_u8(5)
-        self.b = reader.read_u8(6)
-        self.a = reader.read_u8(7)
+        reader = _init_command(self, command)
+        self.r, self.g, self.b, self.a = _decode_rgba(reader)
 
 
 class G_SETCOMBINE:
@@ -881,11 +771,8 @@ class G_SETCOMBINE:
         )
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        word0 = reader.read_u32(0)
-        word1 = reader.read_u32(4)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
+        word0, word1 = _word_pair(reader)
         self.color_a_0 = (word0 >> 20) & 0xF
         self.color_c_0 = (word0 >> 15) & 0x1F
         self.alpha_a_0 = (word0 >> 12) & 0x7
@@ -911,14 +798,8 @@ class G_SETTIMG:
         return f"G_SETTIMG({self.fmt}, {self.size}, {self.width}, 0x{self.address:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        image_type = reader.read_u8(1)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.fmt = (image_type >> 5) & 0x7
-        self.size = (image_type >> 3) & 0x3
-        self.width = (reader.read_u16(2) & 0x0FFF) + 1
-        self.address = reader.read_u32(4)
+        reader = _init_command(self, command)
+        self.fmt, self.size, self.width, self.address = _decode_image(reader)
 
 
 class G_SETZIMG:
@@ -928,9 +809,7 @@ class G_SETZIMG:
         return f"G_SETZIMG(0x{self.address:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
+        reader = _init_command(self, command)
         self.address = reader.read_u32(4)
 
 
@@ -941,14 +820,8 @@ class G_SETCIMG:
         return f"G_SETCIMG({self.fmt}, {self.size}, {self.width}, 0x{self.address:08x})"
 
     def __init__(self, command: bytes):
-        reader = BinaryReader(command)
-        image_type = reader.read_u8(1)
-        self.opcode = reader.read_at(0, 1)
-        self._raw_data = command
-        self.fmt = (image_type >> 5) & 0x7
-        self.size = (image_type >> 3) & 0x3
-        self.width = (reader.read_u16(2) & 0x0FFF) + 1
-        self.address = reader.read_u32(4)
+        reader = _init_command(self, command)
+        self.fmt, self.size, self.width, self.address = _decode_image(reader)
 
 
 DL_COMMANDS = {
@@ -1063,5 +936,9 @@ DL_Command = Union[
     G_SETCIMG,
 ]
 
-def get_command(command_bytes):
-    return DL_COMMANDS.get(command_bytes[:1])(command_bytes)
+
+def get_command(command_bytes: bytes) -> DL_Command | None:
+    command_type = DL_COMMANDS.get(command_bytes[:1])
+    if command_type is None:
+        return None
+    return command_type(command_bytes)
