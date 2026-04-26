@@ -248,7 +248,7 @@ class DisplayList:
 
                 for _ in range(cmd.vertex_count):
                     # Read the raw data and create a Vertex object out of it
-                    vert_list.append(Vertex(vertex_data[vert_start:vert_end]))
+                    vert_list.append(Vertex.from_bytes(vertex_data[vert_start:vert_end]))
 
                     # Move the vertex start and end 16 bytes ahead
                     vert_start = vert_end
