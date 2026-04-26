@@ -2,6 +2,8 @@ import re
 
 from typing import Union
 
+from dk64_lib.binary_reader import BinaryReader
+
 
 class G_SPNOOP:
     __slots__ = ("_raw_data", "opcode", "tag")
@@ -26,25 +28,18 @@ class G_VTX:
         "segment",
         "address",
     )
-    parse_pattern = re.compile(
-        b"(?P<opcode>\x01)(?P<v_count>[\x00-\xFF]{2})(?P<b_start>[\x00-\xFF])(?P<segment>[\x00-\xFF])(?P<address>[\x00-\xFF]{3})"
-    )
 
     def __repr__(self):
         return f"G_VTX({self.vertex_count}, {self.buffer_start}, {self.address.hex()})"
 
     def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
+        reader = BinaryReader(command)
         self._raw_data = command
-        self.opcode = group["opcode"]
-        self.vertex_count = int(
-            "{:16b}".format(int(group["v_count"].hex(), 16)).replace(" ", "0")[4:12], 2
-        )
-        self.buffer_start = (
-            int.from_bytes(group["b_start"], "big") - self.vertex_count * 2
-        )
-        self.segment = group["segment"]
-        self.address = group["address"]
+        self.opcode = reader.read_at(0, 1)
+        self.vertex_count = (reader.read_u16(1) >> 4) & 0xFF
+        self.buffer_start = reader.read_u8(3) - self.vertex_count * 2
+        self.segment = reader.read_at(4, 1)
+        self.address = reader.read_at(5, 3)
 
 
 class G_MODIFYVTX:
@@ -88,41 +83,35 @@ class G_BRANCH_Z:
 
 class G_TRI1:
     __slots__ = ("_raw_data", "opcode", "v1", "v2", "v3")
-    parse_pattern = re.compile(
-        b"(?P<opcode>\x05)(?P<v1>[\x00-\xFF])(?P<v2>[\x00-\xFF])(?P<v3>[\x00-\xFF])\x00\x00\x00\x00"
-    )
 
     def __repr__(self):
         return f"G_TRI1({self.v1}, {self.v2}, {self.v3})"
 
     def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
+        reader = BinaryReader(command)
+        self.opcode = reader.read_at(0, 1)
         self._raw_data = command
-        self.v1 = int(int.from_bytes(group["v1"], "big") / 2)
-        self.v2 = int(int.from_bytes(group["v2"], "big") / 2)
-        self.v3 = int(int.from_bytes(group["v3"], "big") / 2)
+        self.v1 = reader.read_u8(1) // 2
+        self.v2 = reader.read_u8(2) // 2
+        self.v3 = reader.read_u8(3) // 2
 
 
 class G_TRI2:
     __slots__ = ("_raw_data", "opcode", "v1", "v2", "v3", "v4", "v5", "v6")
-    parse_pattern = re.compile(
-        b"(?P<opcode>\x06)(?P<v1>[\x00-\xFF])(?P<v2>[\x00-\xFF])(?P<v3>[\x00-\xFF])\x00(?P<v4>[\x00-\xFF])(?P<v5>[\x00-\xFF])(?P<v6>[\x00-\xFF])"
-    )
 
     def __repr__(self):
         return f"G_TRI2(({self.v1}, {self.v2}, {self.v3}), ({self.v4}, {self.v5}, {self.v6}))"
 
     def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
+        reader = BinaryReader(command)
+        self.opcode = reader.read_at(0, 1)
         self._raw_data = command
-        self.v1 = int(int.from_bytes(group["v1"], "big") / 2)
-        self.v2 = int(int.from_bytes(group["v2"], "big") / 2)
-        self.v3 = int(int.from_bytes(group["v3"], "big") / 2)
-        self.v4 = int(int.from_bytes(group["v4"], "big") / 2)
-        self.v5 = int(int.from_bytes(group["v5"], "big") / 2)
-        self.v6 = int(int.from_bytes(group["v6"], "big") / 2)
+        self.v1 = reader.read_u8(1) // 2
+        self.v2 = reader.read_u8(2) // 2
+        self.v3 = reader.read_u8(3) // 2
+        self.v4 = reader.read_u8(5) // 2
+        self.v5 = reader.read_u8(6) // 2
+        self.v6 = reader.read_u8(7) // 2
 
 
 class G_QUAD:
@@ -283,34 +272,28 @@ class G_LOAD_UCODE:
 
 class G_DL:
     __slots__ = ("_raw_data", "opcode", "store_return_address", "segment", "address")
-    parse_pattern = re.compile(
-        b"(?P<opcode>\xDE)(?P<store_return_address>(\x00|\x01))\x00{2}(?P<segment>[\x00-\xFF])(?P<address>[\x00-\xFF]{3})"
-    )
 
     def __repr__(self):
         return f"G_DL({self.store_return_address}, {self.address})"
 
     def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
+        reader = BinaryReader(command)
+        self.opcode = reader.read_at(0, 1)
         self._raw_data = command
-        self.store_return_address = (
-            True if group["store_return_address"] == b"\x00" else False
-        )
-        self.segment = group["segment"]
-        self.address = group["address"]
+        self.store_return_address = reader.read_u8(1) == 0
+        self.segment = reader.read_at(4, 1)
+        self.address = reader.read_at(5, 3)
 
 
 class G_ENDDL:
     __slots__ = ("_raw_data", "opcode")
-    parse_pattern = re.compile(b"(?P<opcode>\xDF)")
 
     def __repr__(self):
         return f"G_ENDDL()"
 
     def __init__(self, command: bytes):
-        group = self.parse_pattern.match(command)
-        self.opcode = group["opcode"]
+        reader = BinaryReader(command)
+        self.opcode = reader.read_at(0, 1)
         self._raw_data = command
 
 
