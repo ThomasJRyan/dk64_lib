@@ -12,6 +12,11 @@ from dk64_lib.f3dex2.display_list import (
     DisplayListExpansion,
     create_display_lists,
 )
+from dk64_lib.f3dex2.texture_export import (
+    TexturedObjExport,
+    TexturedObjExporter,
+    save_textured_obj_export,
+)
 
 POINTER_PATTERN = re.compile(b'\x00[\x00-\xFF]\x08\x00\x00\x00\x00\x00')
 
@@ -163,16 +168,58 @@ class GeometryData(BaseData):
                 tri_offset += len(verticies)
         return obj_data
 
-    def save_to_obj(self, filename: str, folderpath: str = ".") -> None:
+    def create_textured_obj(
+        self,
+        mtl_filename: str = "geometry.mtl",
+        texture_folder: str = "textures",
+    ) -> TexturedObjExport:
+        """Creates OBJ, MTL, and texture image data for this geometry."""
+        texture_data = self.rom.get_texture_data() if self.rom else tuple()
+        exporter = TexturedObjExporter(texture_data)
+        return exporter.export(
+            self.display_lists,
+            mtl_filename=mtl_filename,
+            texture_folder=texture_folder,
+        )
+
+    def save_to_obj(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = False,
+        texture_folder: str = "textures",
+    ) -> None:
         """Save geometry data to obj format
 
         Args:
             filename (str): Name of obj file
             folderpath (str, optional): Folder path to save obj to. Defaults to ".".
+            include_textures (bool, optional): Whether to export OBJ material and
+                texture files alongside the OBJ. Defaults to False.
+            texture_folder (str, optional): Folder for exported texture images
+                when include_textures is True. Defaults to "textures".
         """
+        if include_textures:
+            self.save_to_textured_obj(filename, folderpath, texture_folder)
+            return
+
         filepath = pathlib.Path(folderpath, filename)
         with open(filepath, "w") as obj_file:
             obj_file.write(self.create_obj())
+
+    def save_to_textured_obj(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        texture_folder: str = "textures",
+    ) -> None:
+        """Save OBJ, MTL, and texture PNG files for this geometry."""
+        mtl_filename = pathlib.Path(filename).with_suffix(".mtl").name
+        export = self.create_textured_obj(
+            mtl_filename=mtl_filename,
+            texture_folder=texture_folder,
+        )
+        save_textured_obj_export(export, filename, folderpath)
 
     def create_dae(self) -> Collada:
         """Creates a dae file out of the geometry data
