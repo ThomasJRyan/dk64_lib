@@ -102,6 +102,53 @@ class TextureExportTest(unittest.TestCase):
         self.assertEqual(len(export.images), 1)
         self.assertTrue(export.images[0].data.startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_exporter_uses_texture_command_tile_for_mipmapped_textures(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        vertex_data = (
+            _vertex(0, 0, 0, 0, 0)
+            + _vertex(1, 0, 0, 32, 0)
+            + _vertex(0, 1, 0, 0, 32)
+        )
+        commands = b"".join(
+            (
+                _words(0xD7000002, 0xFFFFFFFF),
+                _words(0xFD100000, 0x00000000),
+                _words(0xF5100000, 0x07000000),
+                _words(0xF3000000, 0x07000000),
+                _words(0xF5100000, 0x00000000),
+                _words(0xF2000000, 0x00004004),
+                _words(0xF5100000, 0x01000000),
+                _words(0xF2000000, 0x01000000),
+                b"\x01\x00\x30\x06\x00\x00\x00\x00",
+                b"\x05\x00\x02\x04\x00\x00\x00\x00",
+                b"\xdf\x00\x00\x00\x00\x00\x00\x00",
+            )
+        )
+        display_list = DisplayList(
+            raw_data=commands,
+            raw_vertex_data=vertex_data,
+            vertex_pointer=0,
+            offset=0,
+        )
+
+        export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
+
+        self.assertIn("usemtl tex_0_pal_none_f0_s2_2x2", export.obj_data)
+        self.assertIn("map_Kd textures/tex_0_pal_none_f0_s2_2x2.png", export.mtl_data)
+        self.assertEqual(
+            export.images[0].filename,
+            "textures/tex_0_pal_none_f0_s2_2x2.png",
+        )
+
     def test_save_textured_obj_export_writes_assets(self):
         texture_data = [SimpleNamespace(raw_data=_rgba16(255, 0, 0))]
         commands = b"".join(

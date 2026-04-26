@@ -123,12 +123,13 @@ class _TextureState:
             return
 
         if isinstance(command, commands.G_SETTILESIZE):
-            self._active_tile = command.tile
+            if self._active_tile is None:
+                self._active_tile = command.tile
             self._tile_sizes[command.tile] = _tile_dimensions(command)
             return
 
-        if isinstance(command, commands.G_TEXTURE) and command.on:
-            self._active_tile = command.tile
+        if isinstance(command, commands.G_TEXTURE):
+            self._active_tile = command.tile if command.on else None
 
     @property
     def active_texture(self) -> _TextureKey | None:
