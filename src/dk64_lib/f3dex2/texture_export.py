@@ -401,16 +401,22 @@ def save_textured_obj_export(
     export: TexturedObjExport,
     obj_filename: str,
     folderpath: str = ".",
-) -> None:
+) -> list[pathlib.Path]:
     folder = pathlib.Path(folderpath)
     obj_path = folder / obj_filename
+    obj_path.parent.mkdir(parents=True, exist_ok=True)
     obj_path.write_text(export.obj_data)
-    obj_path.with_suffix(".mtl").write_text(export.mtl_data)
+    mtl_path = obj_path.with_suffix(".mtl")
+    mtl_path.write_text(export.mtl_data)
+    written_paths = [obj_path, mtl_path]
 
     for image in export.images:
         image_path = folder / image.filename
         image_path.parent.mkdir(parents=True, exist_ok=True)
         image_path.write_bytes(image.data)
+        written_paths.append(image_path)
+
+    return written_paths
 
 
 def _vertices_for_command(display_list: object, command: commands.G_VTX) -> list[Vertex]:

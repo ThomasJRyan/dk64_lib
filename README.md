@@ -29,21 +29,36 @@ for text_line in rom.text_tables[0].text_lines:
 
 ### Geometry data
 
-Export every map to an obj
+Export every supported asset type to organized folders:
 ```python
 from dk64_lib.rom import Rom
 rom = Rom("Donkey Kong 64 (USA).z64")
 
-for map_num, geometry_map in enumerate(rom.geometry_tables):
-    geometry_map.save_to_obj(f'{map_num}.obj')
+rom.export_all("dk64_export")
 ```
 
-Export a map to OBJ with an MTL file and PNG texture assets:
+Export every map to OBJ with MTL files and PNG texture assets:
 ```python
 from dk64_lib.rom import Rom
 rom = Rom("Donkey Kong 64 (USA).z64")
 
-rom.geometry_tables[0].save_to_obj("0.obj", include_textures=True)
+rom.export_geometries("dk64_export/geometries")
+```
+
+Export a single map as textured OBJ:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.geometry_tables[0].save_to_obj("0.obj")
+```
+
+Export a legacy geometry-only OBJ:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.geometry_tables[0].save_to_obj("0.obj", include_textures=False)
 ```
 
 ## To-do

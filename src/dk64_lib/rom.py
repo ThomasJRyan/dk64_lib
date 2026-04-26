@@ -4,11 +4,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryFile
 from functools import cache, cached_property
+from re import sub
 
 from typing import Literal, Generator
 
 from dk64_lib.data_types import TextureData, TextData, CutsceneData, GeometryData
+from dk64_lib.constants import MAPS
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
+
+
+TEXTURE_TABLES = (7, 14, 25)
+RAW_EXPORT_TABLES = (1, 7, 8, 12, 14, 25)
 
 
 @dataclass(frozen=True)
@@ -55,6 +61,23 @@ class Rom:
     def __del__(self):
         """Closes the file on deletion"""
         self.rom_fh.close()
+
+    @staticmethod
+    def _safe_filename(name: str) -> str:
+        safe_name = sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._")
+        return safe_name or "asset"
+
+    @staticmethod
+    def _write_bytes(path: Path, data: bytes) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        return path
+
+    @staticmethod
+    def _write_text(path: Path, data: str) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(data)
+        return path
 
     @cached_property
     def release_or_kiosk(self) -> Literal["release", "kiosk"]:
@@ -110,6 +133,136 @@ class Rom:
     @cached_property
     def geometry_tables(self):
         return [geometry_data for geometry_data in self.get_geometry_data()]
+
+    def export_textures(self, folderpath: str | Path = "exports/textures") -> list[Path]:
+        """Export raw texture table entries grouped by table number."""
+        exported_paths = list()
+        root = Path(folderpath)
+        for table_id in TEXTURE_TABLES:
+            table_folder = root / f"table_{table_id:02d}"
+            for texture_index, table_data in enumerate(
+                self.generate_rom_table_data([table_id])
+            ):
+                filename = (
+                    f"{texture_index:06d}_"
+                    f"offset_{table_data['offset']:08x}.bin"
+                )
+                exported_paths.append(
+                    self._write_bytes(table_folder / filename, table_data["raw_data"])
+                )
+        return exported_paths
+
+    def export_text(self, folderpath: str | Path = "exports/text") -> list[Path]:
+        """Export parsed text tables as UTF-8 text files."""
+        exported_paths = list()
+        root = Path(folderpath)
+        for table_index, text_data in enumerate(self.get_text_data()):
+            lines = [
+                f"{line_index:04d}: {line.text}"
+                for line_index, line in enumerate(text_data.text_lines)
+            ]
+            filename = f"text_{table_index:03d}.txt"
+            exported_paths.append(self._write_text(root / filename, "\n".join(lines)))
+        return exported_paths
+
+    def export_cutscenes(
+        self,
+        folderpath: str | Path = "exports/cutscenes",
+    ) -> list[Path]:
+        """Export raw cutscene table entries."""
+        exported_paths = list()
+        root = Path(folderpath)
+        for cutscene_index, cutscene_data in enumerate(self.get_cutscene_data()):
+            filename = (
+                f"cutscene_{cutscene_index:03d}_"
+                f"offset_{cutscene_data.offset:08x}.bin"
+            )
+            exported_paths.append(
+                self._write_bytes(root / filename, cutscene_data.raw_data)
+            )
+        return exported_paths
+
+    def export_geometries(
+        self,
+        folderpath: str | Path = "exports/geometries",
+        include_textures: bool = True,
+    ) -> list[Path]:
+        """Export geometry tables as OBJ files, textured by default."""
+        exported_paths = list()
+        root = Path(folderpath)
+        root.mkdir(parents=True, exist_ok=True)
+
+        for geometry_index, geometry_data in enumerate(self.geometry_tables):
+            map_name = MAPS[geometry_index] if geometry_index < len(MAPS) else "unknown"
+            filename_stem = self._safe_filename(f"{geometry_index:03d}_{map_name}")
+
+            if geometry_data.is_pointer:
+                pointer_path = root / f"{filename_stem}.pointer.txt"
+                exported_paths.append(
+                    self._write_text(pointer_path, f"points_to={geometry_data.pointer}\n")
+                )
+                continue
+
+            obj_path = root / f"{filename_stem}.obj"
+            written_paths = geometry_data.save_to_obj(
+                obj_path.name,
+                str(root),
+                include_textures=include_textures,
+            )
+            exported_paths.extend(written_paths)
+
+        return exported_paths
+
+    def export_assets(
+        self,
+        folderpath: str | Path = "exports/assets",
+        tables: tuple[int, ...] = RAW_EXPORT_TABLES,
+    ) -> list[Path]:
+        """Export raw entries from supported pointer tables."""
+        exported_paths = list()
+        root = Path(folderpath)
+        for table_id in tables:
+            table_folder = root / f"table_{table_id:02d}"
+            for entry_index, table_data in enumerate(
+                self.generate_rom_table_data([table_id])
+            ):
+                filename = (
+                    f"{entry_index:06d}_"
+                    f"offset_{table_data['offset']:08x}.bin"
+                )
+                exported_paths.append(
+                    self._write_bytes(table_folder / filename, table_data["raw_data"])
+                )
+        return exported_paths
+
+    def export_raw_tables(
+        self,
+        folderpath: str | Path = "exports/raw_tables",
+        tables: tuple[int, ...] = RAW_EXPORT_TABLES,
+    ) -> list[Path]:
+        """Export raw entries from supported pointer tables."""
+        return self.export_assets(folderpath, tables)
+
+    def export_all(
+        self,
+        folderpath: str | Path = "exports",
+        include_textures: bool = True,
+        include_assets: bool = True,
+    ) -> dict[str, list[Path]]:
+        """Export all currently supported ROM data to organized folders."""
+        root = Path(folderpath)
+        exported = {
+            "geometries": self.export_geometries(
+                root / "geometries",
+                include_textures=include_textures,
+            ),
+            "textures": self.export_textures(root / "textures"),
+            "text": self.export_text(root / "text"),
+            "cutscenes": self.export_cutscenes(root / "cutscenes"),
+        }
+        if include_assets:
+            exported["assets"] = self.export_assets(root / "assets")
+        return exported
 
     @cache
     def _read_table_entries(self, start: int, size: int) -> tuple[TableEntry, ...]:

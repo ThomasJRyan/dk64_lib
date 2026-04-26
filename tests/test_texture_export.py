@@ -124,13 +124,26 @@ class TextureExportTest(unittest.TestCase):
         export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            save_textured_obj_export(export, "model.obj", tmpdir)
-
-            self.assertTrue((Path(tmpdir) / "model.obj").exists())
-            self.assertTrue((Path(tmpdir) / "model.mtl").exists())
-            self.assertTrue(
-                (Path(tmpdir) / "textures" / "tex_0_pal_none_f0_s2_1x1.png").exists()
+            export_folder = Path(tmpdir) / "nested"
+            written_paths = save_textured_obj_export(
+                export,
+                "model.obj",
+                export_folder,
             )
+
+            self.assertEqual(
+                written_paths,
+                [
+                    export_folder / "model.obj",
+                    export_folder / "model.mtl",
+                    export_folder
+                    / "textures"
+                    / "tex_0_pal_none_f0_s2_1x1.png",
+                ],
+            )
+            self.assertTrue((export_folder / "model.obj").exists())
+            self.assertTrue((export_folder / "model.mtl").exists())
+            self.assertTrue(written_paths[-1].exists())
 
 
 if __name__ == "__main__":
