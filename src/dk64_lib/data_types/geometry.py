@@ -73,7 +73,9 @@ class GeometryData(BaseData):
         expansion_start = self.dl_expansion_start + 4
         for expansion_num in range(expansion_count):
             offset = expansion_start + expansion_num * 0x10
-            ret_list.append(DisplayListExpansion(reader.read_at(offset, 0x10)))
+            ret_list.append(
+                DisplayListExpansion.from_bytes(reader.read_at(offset, 0x10))
+            )
 
         return ret_list
 
@@ -90,7 +92,9 @@ class GeometryData(BaseData):
         for chunk_num in range(int(self.vert_chunk_length / 52)):
             chunk_start = self.vert_chunk_start + 52 * chunk_num
             chunk_end = self.vert_chunk_start + 52 * (chunk_num + 1)
-            ret_list.append(DisplayListChunkData(self.raw_data[chunk_start:chunk_end]))
+            ret_list.append(
+                DisplayListChunkData.from_bytes(self.raw_data[chunk_start:chunk_end])
+            )
         return ret_list
 
     @property

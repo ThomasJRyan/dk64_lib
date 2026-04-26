@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from tempfile import TemporaryFile
 
 from dk64_lib.components.vertex import Vertex
@@ -10,6 +11,7 @@ from dk64_lib.f3dex2.commands import get_command, DL_Command
 from dk64_lib.file_io import get_bytes
 
 
+@dataclass(frozen=True, slots=True)
 class DisplayListExpansion:
     """
         This section of the geometry is currently not fully understood
@@ -19,44 +21,65 @@ class DisplayListExpansion:
         to a display list. This display list uses the entire vertex data
         when calling VTX commands instead of a segmented chunk
     """
-    def __init__(self, raw_data: bytes):
-        self._raw_data = raw_data
-        self._parse_data()
+    unknown_1: int
+    unknown_2: int
+    display_list_offset: int
+    unknown_4: int
 
-    def _parse_data(self):
-        reader = BinaryReader(self._raw_data)
-        self.unknown_1 = reader.read_u32(0)
-        self.unknown_2 = reader.read_u32(4)
-        self.display_list_offset = reader.read_u32(8)
-        self.unknown_4 = reader.read_u32(12)
+    @classmethod
+    def from_bytes(cls, raw_data: bytes) -> "DisplayListExpansion":
+        reader = BinaryReader(raw_data)
+        return cls(
+            unknown_1=reader.read_u32(0),
+            unknown_2=reader.read_u32(4),
+            display_list_offset=reader.read_u32(8),
+            unknown_4=reader.read_u32(12),
+        )
 
 
+@dataclass(frozen=True, slots=True)
 class DisplayListChunkData:
-    def __init__(self, raw_data: bytes):
-        self._raw_data = raw_data
-        self._parse_data()
+    r: int
+    g: int
+    b: int
+    unknown_char: int
+    mips_instruction: bytes
+    unknown_flag: int
+    dl_1_start: int
+    dl_1_size: int
+    dl_2_start: int
+    dl_2_size: int
+    dl_3_start: int
+    dl_3_size: int
+    dl_4_start: int
+    dl_4_size: int
+    vertex_start: int
+    vertex_size: int
 
-    def _parse_data(self):
-        reader = BinaryReader(self._raw_data)
-        self.r = reader.read_u8(0)
-        self.g = reader.read_u8(1)
-        self.b = reader.read_u8(2)
-        self.unknown_char = reader.read_u8(3)
-        self.mips_instruction = reader.read_at(4, 4)
-        self.unknown_flag = reader.read_u32(8)
-        self.dl_1_start = reader.read_u32(12)
-        self.dl_1_size = reader.read_u32(16)
-        self.dl_2_start = reader.read_u32(20)
-        self.dl_2_size = reader.read_u32(24)
-        self.dl_3_start = reader.read_u32(28)
-        self.dl_3_size = reader.read_u32(32)
-        self.dl_4_start = reader.read_u32(36)
-        self.dl_4_size = reader.read_u32(40)
-        self.vertex_start = reader.read_u32(44)
-        self.vertex_size = reader.read_u32(48)
+    @classmethod
+    def from_bytes(cls, raw_data: bytes) -> "DisplayListChunkData":
+        reader = BinaryReader(raw_data)
+        return cls(
+            r=reader.read_u8(0),
+            g=reader.read_u8(1),
+            b=reader.read_u8(2),
+            unknown_char=reader.read_u8(3),
+            mips_instruction=reader.read_at(4, 4),
+            unknown_flag=reader.read_u32(8),
+            dl_1_start=reader.read_u32(12),
+            dl_1_size=reader.read_u32(16),
+            dl_2_start=reader.read_u32(20),
+            dl_2_size=reader.read_u32(24),
+            dl_3_start=reader.read_u32(28),
+            dl_3_size=reader.read_u32(32),
+            dl_4_start=reader.read_u32(36),
+            dl_4_size=reader.read_u32(40),
+            vertex_start=reader.read_u32(44),
+            vertex_size=reader.read_u32(48),
+        )
 
     @property
-    def vertex_start_size(self) -> dict[int, int]:
+    def vertex_start_size(self) -> dict[int, tuple[int, int]]:
         return {
             self.dl_1_start: (self.vertex_start, self.vertex_size),
             self.dl_2_start: (self.vertex_start, self.vertex_size),
