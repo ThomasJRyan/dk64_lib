@@ -4,7 +4,7 @@
 
 - The project is installed in editable mode in `.venv`.
 - Use `.venv/bin/python -m pytest -q` as the baseline verification command.
-- Current baseline result: `39 passed, 432 subtests passed`.
+- Current baseline result: `65 passed, 485 subtests passed`.
 - The existing tests cover ROM metadata, text extraction, geometry table metadata, display-list command counts, and OBJ output against 216 golden OBJ fixtures.
 
 ## Resolved Issue
@@ -19,7 +19,7 @@
 3. Refactor ROM pointer-table extraction into explicit table-entry records before decoding payloads. Done in `79b56b8`.
 4. Convert parsed records such as vertices, triangles, table entries, display-list chunks, expansions, and text fragments into clear value objects. Done across `79b56b8`, `411c560`, `cf5565a`, and `b56db4b`.
 5. Keep OBJ output and display-list command counts stable throughout the refactor using the existing golden tests.
-6. After the binary and table layers are clearer, simplify F3DEX2 command parsing into a compact registry and command model. In progress: geometry-critical commands now parse through explicit byte reads in `908f9b1`.
+6. After the binary and table layers are clearer, simplify F3DEX2 command parsing into a compact registry and command model. In progress: geometry-critical commands now parse through explicit byte reads in `908f9b1`; the remaining packed RSP/RDP command stubs now decode named fields with opcode-level coverage.
 
 ## Additional Fixes
 
@@ -28,7 +28,7 @@
 ## Current Test Baseline
 
 - Latest verification command: `.venv/bin/python -m pytest -q`
-- Latest result: `39 passed, 432 subtests passed`
+- Latest result: `65 passed, 485 subtests passed`
 
 ## Rust Migration Notes
 
