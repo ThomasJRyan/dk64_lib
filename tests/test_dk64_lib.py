@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from dk64_lib.data_types import CutsceneData
 from dk64_lib.rom import Rom, TableEntry
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
@@ -38,6 +39,13 @@ class RomTest(unittest.TestCase):
         self.assertEqual(
             self.rom.text_tables[-1].text_lines[-1].text, "HOW ABOUT ANOTHER GAME?"
         )
+
+    def test_cutscene_data(self):
+        cutscene_data = self.rom.get_cutscene_data()
+
+        self.assertEqual(len(cutscene_data), 221)
+        self.assertIsInstance(cutscene_data[0], CutsceneData)
+        self.assertEqual(cutscene_data[0].data_type, "Cutscene")
 
     def test_geometry_data(self):
         self.assertEqual(len(self.rom.geometry_tables), 216)

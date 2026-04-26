@@ -207,7 +207,7 @@ class Rom:
         """
         cutscene_data = list()
         for table_data in self.generate_rom_table_data([8]):
-            cutscene_data.append(TextureData(**table_data))
+            cutscene_data.append(CutsceneData(**table_data))
         return cutscene_data
 
     @cache
