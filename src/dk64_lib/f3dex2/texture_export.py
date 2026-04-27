@@ -526,12 +526,12 @@ def save_textured_obj_export(
 def test_mipmap_export(
     texture_source: object,
     folderpath: str | pathlib.Path = "mipmap_test",
-    texture_index: int = 0,
-    palette_index: int | None = 1,
-    fmt: int = 2,
-    size: int = 0,
+    texture_index: int = 2,
+    palette_index: int | None = None,
+    fmt: int = 0,
+    size: int = 2,
     width: int = 32,
-    height: int = 64,
+    height: int = 32,
 ) -> list[pathlib.Path]:
     """Export DK64 packed mipmap candidates for quick visual iteration."""
     texture_data = _geometry_texture_table(texture_source)

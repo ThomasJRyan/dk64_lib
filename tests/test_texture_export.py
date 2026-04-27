@@ -57,6 +57,17 @@ def _indexed_rgba(*indices: int) -> bytes:
     return bytes(component for index in indices for component in colors[index])
 
 
+def _indexed_rgba16(*indices: int) -> bytes:
+    colors = (
+        (0, 0, 0),
+        (255, 0, 0),
+        (0, 255, 0),
+        (0, 0, 255),
+        (255, 255, 255),
+    )
+    return b"".join(_rgba16(*colors[index]) for index in indices)
+
+
 def _vertex(
     x: int,
     y: int,
@@ -283,30 +294,46 @@ class TextureExportTest(unittest.TestCase):
             ((1, 1), bytes((255, 255, 255, 255))),
         )
 
-    def test_test_mipmap_export_stitches_rows_for_first_two_levels(self):
-        palette = b"".join(
-            (
-                _rgba16(0, 0, 0),
-                _rgba16(255, 0, 0),
-                _rgba16(0, 255, 0),
-                _rgba16(0, 0, 255),
-                _rgba16(255, 255, 255),
-            )
-        )
+    def test_test_mipmap_export_stitches_rows_for_rgba_texture_defaults(self):
         texture_data = [
+            SimpleNamespace(raw_data=b""),
+            SimpleNamespace(raw_data=b""),
             SimpleNamespace(
-                raw_data=(
-                    b"\x12\x34"
-                    b"\x43\x21"
-                    b"\x21\x43"
-                    b"\x34\x12"
-                    b"\x11\x22"
-                    b"\x00\x00"
-                    b"\x44\x33"
-                    b"\x00\x00"
+                raw_data=_indexed_rgba16(
+                    1,
+                    2,
+                    3,
+                    4,
+                    4,
+                    3,
+                    2,
+                    1,
+                    2,
+                    1,
+                    4,
+                    3,
+                    3,
+                    4,
+                    1,
+                    2,
+                    1,
+                    1,
+                    2,
+                    2,
+                    0,
+                    0,
+                    0,
+                    0,
+                    4,
+                    4,
+                    3,
+                    3,
+                    0,
+                    0,
+                    0,
+                    0,
                 )
             ),
-            SimpleNamespace(raw_data=palette),
         ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -320,8 +347,8 @@ class TextureExportTest(unittest.TestCase):
             self.assertEqual(
                 [filepath.name for filepath in filepaths],
                 [
-                    "tex_0_pal_1_f2_s0_4x8_mip1_4x4.png",
-                    "tex_0_pal_1_f2_s0_4x8_mip2_2x2.png",
+                    "tex_2_pal_none_f0_s2_4x8_mip1_4x4.png",
+                    "tex_2_pal_none_f0_s2_4x8_mip2_2x2.png",
                 ],
             )
             self.assertEqual(
