@@ -462,7 +462,7 @@ class TextureExportTest(unittest.TestCase):
                 palette_data=palette,
             )
             expected_mip2_row1 = decode_texture(
-                _ci4_indices(*(tuple(range(4, 8)) + tuple(range(4)))),
+                _ci4_indices(*tuple(range(8))),
                 fmt=2,
                 size=0,
                 width=8,

@@ -597,7 +597,6 @@ def _test_packed_mipmap_export_for_texture(
                 output_height=output_height,
                 source_group_pixels=width,
                 skipped_pixels=width // 2,
-                swap_second_row_group_pixels=output_width,
             )
         else:
             rgba = _slice_flat_rgba(base_rgba, start_pixel, output_width, output_height)
@@ -727,7 +726,6 @@ def _slice_sparse_paired_rows_rgba(
     output_height: int,
     source_group_pixels: int,
     skipped_pixels: int,
-    swap_second_row_group_pixels: int,
 ) -> bytes:
     output_row_size = output_width * 4
     source_group_size = source_group_pixels * 4
@@ -744,11 +742,7 @@ def _slice_sparse_paired_rows_rgba(
         ]
         paired.extend((first_row + b"\x00" * output_row_size)[:output_row_size])
         if (row_pair * 2) + 1 < output_height:
-            second_row = _swap_pixel_group_halves_rgba(
-                (second_row + b"\x00" * output_row_size)[:output_row_size],
-                swap_second_row_group_pixels,
-            )
-            paired.extend(second_row)
+            paired.extend((second_row + b"\x00" * output_row_size)[:output_row_size])
 
     expected = output_width * output_height * 4
     return bytes(paired[:expected])
