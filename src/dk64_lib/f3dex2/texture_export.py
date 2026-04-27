@@ -452,10 +452,10 @@ def test_mipmap_export(
             1,
             width,
             max(1, height // 2),
-            _stitch_interleaved_even_rows_rgba(
+            _stitch_alternating_swapped_rows_rgba(
                 source_rgba,
                 source_width=width,
-                source_height=height,
+                target_height=max(1, height // 2),
             ),
         ),
         (
@@ -518,19 +518,34 @@ def _stitch_rows_rgba(
     return bytes(mip_rgba)
 
 
-def _stitch_interleaved_even_rows_rgba(
+def _stitch_alternating_swapped_rows_rgba(
     source_rgba: bytes,
     source_width: int,
-    source_height: int,
+    target_height: int,
 ) -> bytes:
     row_size = source_width * 4
-    half_height = max(1, source_height // 2)
     mip_rgba = bytearray()
-    for mip_row in range(half_height):
-        source_row = ((mip_row // 2) * 2) + (half_height if mip_row % 2 else 0)
-        source_row_start = source_row * row_size
-        mip_rgba.extend(source_rgba[source_row_start : source_row_start + row_size])
+    for mip_row in range(target_height):
+        source_row_start = mip_row * row_size
+        source_row = source_rgba[source_row_start : source_row_start + row_size]
+        if mip_row % 2:
+            source_row = _swap_four_pixel_groups_rgba(source_row)
+        mip_rgba.extend(source_row)
     return bytes(mip_rgba)
+
+
+def _swap_four_pixel_groups_rgba(row_rgba: bytes) -> bytes:
+    group_size = 4 * 4
+    half_group_size = group_size // 2
+    swapped = bytearray()
+    for offset in range(0, len(row_rgba), group_size):
+        group = row_rgba[offset : offset + group_size]
+        if len(group) == group_size:
+            swapped.extend(group[half_group_size:])
+            swapped.extend(group[:half_group_size])
+        else:
+            swapped.extend(group)
+    return bytes(swapped)
 
 
 def _vertices_for_command(display_list: object, command: commands.G_VTX) -> list[Vertex]:
