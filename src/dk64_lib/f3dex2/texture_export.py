@@ -431,12 +431,44 @@ def test_mipmap_export(
     size: int = 2,
     width: int = 32,
     height: int = 32,
+    include_ci4_reference: bool = True,
 ) -> list[pathlib.Path]:
     """Export DK64 packed mipmap candidates for quick visual iteration."""
     texture_data = _geometry_texture_table(texture_source)
+    filepaths = list()
+    specs = [(texture_index, palette_index, fmt, size, width, height)]
+    ci4_reference = (0, 1, 2, 0, 32, 64)
+    if include_ci4_reference and ci4_reference not in specs:
+        specs.append(ci4_reference)
+
+    for spec in specs:
+        filepaths.extend(
+            _test_mipmap_export_for_texture(
+                texture_data,
+                pathlib.Path(folderpath),
+                texture_index=spec[0],
+                palette_index=spec[1],
+                fmt=spec[2],
+                size=spec[3],
+                width=spec[4],
+                height=spec[5],
+            )
+        )
+    return filepaths
+
+
+def _test_mipmap_export_for_texture(
+    texture_data: tuple[object, ...],
+    folderpath: pathlib.Path,
+    texture_index: int,
+    palette_index: int | None,
+    fmt: int,
+    size: int,
+    width: int,
+    height: int,
+) -> list[pathlib.Path]:
     raw_texture = _raw_texture_data(texture_data, texture_index)
     raw_palette = _raw_texture_data(texture_data, palette_index)
-
     source_rgba = decode_texture(
         raw_texture,
         fmt=fmt,
@@ -445,9 +477,9 @@ def test_mipmap_export(
         height=height,
         palette_data=raw_palette,
     )
-    palette_name = "none" if palette_index is None else str(palette_index)
 
-    mip_levels = (
+    outputs = (
+        (None, width, height, source_rgba),
         (
             1,
             width,
@@ -473,16 +505,44 @@ def test_mipmap_export(
     )
 
     filepaths = list()
-    for level, mip_width, mip_height, rgba in mip_levels:
-        filename = (
-            f"tex_{texture_index}_pal_{palette_name}_f{fmt}_s{size}_"
-            f"{width}x{height}_mip{level}_{mip_width}x{mip_height}.png"
+    for level, output_width, output_height, rgba in outputs:
+        filename = _test_mipmap_filename(
+            texture_index,
+            palette_index,
+            fmt,
+            size,
+            width,
+            height,
+            level,
+            output_width,
+            output_height,
         )
         filepath = pathlib.Path(folderpath) / filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_bytes(rgba_to_png(mip_width, mip_height, rgba))
+        filepath.write_bytes(rgba_to_png(output_width, output_height, rgba))
         filepaths.append(filepath)
     return filepaths
+
+
+def _test_mipmap_filename(
+    texture_index: int,
+    palette_index: int | None,
+    fmt: int,
+    size: int,
+    width: int,
+    height: int,
+    level: int | None,
+    output_width: int,
+    output_height: int,
+) -> str:
+    palette_name = "none" if palette_index is None else str(palette_index)
+    base = (
+        f"tex_{texture_index}_pal_{palette_name}_f{fmt}_s{size}_"
+        f"{width}x{height}"
+    )
+    if level is None:
+        return f"{base}.png"
+    return f"{base}_mip{level}_{output_width}x{output_height}.png"
 
 
 test_mipmap_export.__test__ = False
