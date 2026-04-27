@@ -513,8 +513,12 @@ class TextureExportTest(unittest.TestCase):
         for row_pair in range(8):
             rgba_pixels.extend((1, 2, 3, 4) * 4)
             rgba_pixels.extend((1, 2, 3, 4) * 4)
-        rgba_pixels.extend([2] * (8 * 8))
-        rgba_pixels.extend([3] * (4 * 4))
+        for row_group in range(2):
+            rgba_pixels.extend((1, 2, 3, 4) * 2)
+            rgba_pixels.extend((1, 2, 3, 4) * 2)
+            rgba_pixels.extend((1, 2, 3, 4) * 2)
+            rgba_pixels.extend((1, 2, 3, 4) * 2)
+        rgba_pixels.extend((1, 2, 3, 4) * 4)
         texture_data = [
             SimpleNamespace(raw_data=b""),
             SimpleNamespace(raw_data=b""),
@@ -557,6 +561,26 @@ class TextureExportTest(unittest.TestCase):
             self.assertEqual(
                 mip1_pixels[16 * 4 : 32 * 4],
                 _indexed_rgba(*(3, 4, 1, 2) * 4),
+            )
+            mip2_size, mip2_pixels = _png_rgba(filepaths[3].read_bytes())
+            self.assertEqual(mip2_size, (8, 8))
+            self.assertEqual(
+                mip2_pixels[: 8 * 4],
+                _indexed_rgba(*(1, 2, 3, 4) * 2),
+            )
+            self.assertEqual(
+                mip2_pixels[8 * 4 : 16 * 4],
+                _indexed_rgba(*(3, 4, 1, 2) * 2),
+            )
+            mip3_size, mip3_pixels = _png_rgba(filepaths[4].read_bytes())
+            self.assertEqual(mip3_size, (4, 4))
+            self.assertEqual(
+                mip3_pixels[: 4 * 4],
+                _indexed_rgba(1, 2, 3, 4),
+            )
+            self.assertEqual(
+                mip3_pixels[4 * 4 : 8 * 4],
+                _indexed_rgba(3, 4, 1, 2),
             )
 
     def test_save_textured_obj_export_writes_assets(self):

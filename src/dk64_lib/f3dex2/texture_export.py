@@ -666,8 +666,9 @@ def _test_packed_rgba_mipmap_export_for_texture(
     level3_width, level3_height = max(1, width // 8), max(1, height // 8)
     level0_pixels = level0_width * level0_height
     level1_storage_pixels = width * math.ceil(level1_height / 2)
+    level2_storage_pixels = width * math.ceil(level2_height / 4)
     level2_start_pixel = level0_pixels + level1_storage_pixels
-    level3_start_pixel = level2_start_pixel + (level2_width * level2_height)
+    level3_start_pixel = level2_start_pixel + level2_storage_pixels
 
     level0_rgba = _swap_odd_rows_rgba(
         _slice_flat_rgba(base_rgba, 0, level0_width, level0_height),
@@ -691,22 +692,26 @@ def _test_packed_rgba_mipmap_export_for_texture(
             2,
             level2_width,
             level2_height,
-            _slice_flat_rgba(
+            _slice_segmented_rows_rgba(
                 base_rgba,
-                level2_start_pixel,
-                level2_width,
-                level2_height,
+                start_pixel=level2_start_pixel,
+                output_width=level2_width,
+                output_height=level2_height,
+                source_group_pixels=width,
+                swap_group_pixels=4,
             ),
         ),
         (
             3,
             level3_width,
             level3_height,
-            _slice_flat_rgba(
+            _slice_segmented_rows_rgba(
                 base_rgba,
-                level3_start_pixel,
-                level3_width,
-                level3_height,
+                start_pixel=level3_start_pixel,
+                output_width=level3_width,
+                output_height=level3_height,
+                source_group_pixels=level3_width * 4,
+                swap_group_pixels=4,
             ),
         ),
     )
@@ -856,6 +861,39 @@ def _slice_sparse_paired_rows_rgba(
 
     expected = output_width * output_height * 4
     return bytes(paired[:expected])
+
+
+def _slice_segmented_rows_rgba(
+    source_rgba: bytes,
+    start_pixel: int,
+    output_width: int,
+    output_height: int,
+    source_group_pixels: int,
+    swap_group_pixels: int,
+) -> bytes:
+    output_row_size = output_width * 4
+    source_group_size = source_group_pixels * 4
+    rows_per_group = max(1, source_group_pixels // output_width)
+    source_start = start_pixel * 4
+    segmented = bytearray()
+
+    for output_row in range(output_height):
+        group_index = output_row // rows_per_group
+        row_in_group = output_row % rows_per_group
+        row_start = (
+            source_start
+            + (group_index * source_group_size)
+            + (row_in_group * output_row_size)
+        )
+        row_rgba = (
+            source_rgba[row_start : row_start + output_row_size]
+            + b"\x00" * output_row_size
+        )[:output_row_size]
+        if row_in_group % 2:
+            row_rgba = _swap_pixel_group_halves_rgba(row_rgba, swap_group_pixels)
+        segmented.extend(row_rgba)
+
+    return bytes(segmented)
 
 
 def _stitch_rows_rgba(
