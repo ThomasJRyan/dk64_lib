@@ -68,6 +68,15 @@ def _indexed_rgba16(*indices: int) -> bytes:
     return b"".join(_rgba16(*colors[index]) for index in indices)
 
 
+def _ci4_indices(*indices: int) -> bytes:
+    if len(indices) % 2:
+        indices = (*indices, 0)
+    return bytes(
+        ((indices[index] & 0xF) << 4) | (indices[index + 1] & 0xF)
+        for index in range(0, len(indices), 2)
+    )
+
+
 def _vertex(
     x: int,
     y: int,
@@ -279,16 +288,20 @@ class TextureExportTest(unittest.TestCase):
         self.assertNotIn("mip", export.mtl_data)
         self.assertEqual(_png_rgba(export.images[0].data)[0], (2, 2))
 
-    def test_test_mipmap_export_stitches_rows_for_rgba_texture_defaults(self):
+    def test_test_mipmap_export_stitches_rows_for_test_textures(self):
         palette = b"".join(
-            (
-                _rgba16(0, 0, 0),
-                _rgba16(255, 0, 0),
-                _rgba16(0, 255, 0),
-            )
+            _rgba16(value, value, value)
+            for value in range(0, 256, 17)
         )
+        ci4_pixels = []
+        for row in range(64):
+            ci4_pixels.extend(tuple(range(16)) * 2)
+        ci4_pixels.extend([1] * (16 * 32))
+        ci4_pixels.extend([2] * (8 * 16))
+        ci4_pixels.extend([3] * (4 * 8))
+        ci4_pixels.extend([0] * (2944 - len(ci4_pixels)))
         texture_data = [
-            SimpleNamespace(raw_data=b"\x12" * 1472),
+            SimpleNamespace(raw_data=_ci4_indices(*ci4_pixels)),
             SimpleNamespace(raw_data=palette),
             SimpleNamespace(
                 raw_data=_indexed_rgba16(
@@ -345,8 +358,9 @@ class TextureExportTest(unittest.TestCase):
                     "tex_2_pal_none_f0_s2_4x8_mip2_2x2.png",
                     "tex_0_pal_1_f2_s0_32x64_base_32x92.png",
                     "tex_0_pal_1_f2_s0_32x64.png",
-                    "tex_0_pal_1_f2_s0_32x64_mip1_32x32.png",
-                    "tex_0_pal_1_f2_s0_32x64_mip2_16x16.png",
+                    "tex_0_pal_1_f2_s0_32x64_mip1_16x32.png",
+                    "tex_0_pal_1_f2_s0_32x64_mip2_8x16.png",
+                    "tex_0_pal_1_f2_s0_32x64_mip3_4x8.png",
                 ],
             )
             self.assertEqual(_png_rgba(filepaths[0].read_bytes())[0], (4, 8))
@@ -382,7 +396,36 @@ class TextureExportTest(unittest.TestCase):
                 ),
             )
             self.assertEqual(_png_rgba(filepaths[4].read_bytes())[0], (32, 92))
-            self.assertEqual(_png_rgba(filepaths[5].read_bytes())[0], (32, 64))
+            tex0_size, tex0_pixels = _png_rgba(filepaths[5].read_bytes())
+            self.assertEqual(tex0_size, (32, 64))
+            self.assertEqual(_png_rgba(filepaths[6].read_bytes())[0], (16, 32))
+            self.assertEqual(_png_rgba(filepaths[7].read_bytes())[0], (8, 16))
+            self.assertEqual(_png_rgba(filepaths[8].read_bytes())[0], (4, 8))
+            expected_row0 = decode_texture(
+                _ci4_indices(*(tuple(range(16)) * 2)),
+                fmt=2,
+                size=0,
+                width=32,
+                height=1,
+                palette_data=palette,
+            )
+            expected_row1 = decode_texture(
+                _ci4_indices(
+                    *(
+                        tuple(range(8, 16))
+                        + tuple(range(8))
+                        + tuple(range(8, 16))
+                        + tuple(range(8))
+                    )
+                ),
+                fmt=2,
+                size=0,
+                width=32,
+                height=1,
+                palette_data=palette,
+            )
+            self.assertEqual(tex0_pixels[: 32 * 4], expected_row0)
+            self.assertEqual(tex0_pixels[32 * 4 : 64 * 4], expected_row1)
 
     def test_save_textured_obj_export_writes_assets(self):
         texture_data = [SimpleNamespace(raw_data=_rgba16(255, 0, 0))]

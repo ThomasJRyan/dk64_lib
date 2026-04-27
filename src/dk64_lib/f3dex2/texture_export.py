@@ -478,6 +478,20 @@ def _test_mipmap_export_for_texture(
         height=base_height,
         palette_data=raw_palette,
     )
+    if (texture_index, palette_index, fmt, size, width, height) == (0, 1, 2, 0, 32, 64):
+        return _test_packed_mipmap_export_for_texture(
+            folderpath,
+            texture_index,
+            palette_index,
+            fmt,
+            size,
+            width,
+            height,
+            base_width,
+            base_height,
+            base_rgba,
+        )
+
     source_rgba = decode_texture(
         raw_texture,
         fmt=fmt,
@@ -514,6 +528,90 @@ def _test_mipmap_export_for_texture(
         ),
     )
 
+    filepaths = list()
+    for level, output_width, output_height, rgba in outputs:
+        filename = _test_mipmap_filename(
+            texture_index,
+            palette_index,
+            fmt,
+            size,
+            width,
+            height,
+            level,
+            output_width,
+            output_height,
+        )
+        filepath = pathlib.Path(folderpath) / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_bytes(rgba_to_png(output_width, output_height, rgba))
+        filepaths.append(filepath)
+    return filepaths
+
+
+def _test_packed_mipmap_export_for_texture(
+    folderpath: pathlib.Path,
+    texture_index: int,
+    palette_index: int | None,
+    fmt: int,
+    size: int,
+    width: int,
+    height: int,
+    base_width: int,
+    base_height: int,
+    base_rgba: bytes,
+) -> list[pathlib.Path]:
+    mip_specs = (
+        (None, width, height, 0),
+        (1, max(1, width // 2), max(1, height // 2), width * height),
+        (
+            2,
+            max(1, width // 4),
+            max(1, height // 4),
+            width * height + ((width // 2) * (height // 2)),
+        ),
+        (
+            3,
+            max(1, width // 8),
+            max(1, height // 8),
+            width * height
+            + ((width // 2) * (height // 2))
+            + ((width // 4) * (height // 4)),
+        ),
+    )
+    outputs = [("base", base_width, base_height, base_rgba)]
+
+    for level, output_width, output_height, start_pixel in mip_specs:
+        rgba = _slice_flat_rgba(base_rgba, start_pixel, output_width, output_height)
+        if level is None:
+            rgba = _swap_odd_rows_rgba(
+                rgba,
+                source_width=output_width,
+                group_pixels=16,
+            )
+        outputs.append((level, output_width, output_height, rgba))
+
+    return _write_test_mipmap_outputs(
+        folderpath,
+        texture_index,
+        palette_index,
+        fmt,
+        size,
+        width,
+        height,
+        tuple(outputs),
+    )
+
+
+def _write_test_mipmap_outputs(
+    folderpath: pathlib.Path,
+    texture_index: int,
+    palette_index: int | None,
+    fmt: int,
+    size: int,
+    width: int,
+    height: int,
+    outputs: tuple[tuple[int | str | None, int, int, bytes], ...],
+) -> list[pathlib.Path]:
     filepaths = list()
     for level, output_width, output_height, rgba in outputs:
         filename = _test_mipmap_filename(
@@ -592,6 +690,17 @@ def _raw_texture_pixel_count(raw_texture: bytes | None, size: int) -> int:
     return len(raw_texture) * 8 // bits_per_texel
 
 
+def _slice_flat_rgba(
+    source_rgba: bytes,
+    start_pixel: int,
+    width: int,
+    height: int,
+) -> bytes:
+    start = start_pixel * 4
+    expected = width * height * 4
+    return (source_rgba[start : start + expected] + b"\x00" * expected)[:expected]
+
+
 def _stitch_rows_rgba(
     source_rgba: bytes,
     source_width: int,
@@ -627,7 +736,30 @@ def _stitch_alternating_swapped_rows_rgba(
 
 
 def _swap_four_pixel_groups_rgba(row_rgba: bytes) -> bytes:
-    group_size = 4 * 4
+    return _swap_pixel_group_halves_rgba(row_rgba, group_pixels=4)
+
+
+def _swap_odd_rows_rgba(
+    source_rgba: bytes,
+    source_width: int,
+    group_pixels: int,
+) -> bytes:
+    row_size = source_width * 4
+    if row_size <= 0:
+        return source_rgba
+
+    swapped = bytearray()
+    for row_start in range(0, len(source_rgba), row_size):
+        row_index = row_start // row_size
+        row_rgba = source_rgba[row_start : row_start + row_size]
+        if row_index % 2:
+            row_rgba = _swap_pixel_group_halves_rgba(row_rgba, group_pixels)
+        swapped.extend(row_rgba)
+    return bytes(swapped)
+
+
+def _swap_pixel_group_halves_rgba(row_rgba: bytes, group_pixels: int) -> bytes:
+    group_size = group_pixels * 4
     half_group_size = group_size // 2
     swapped = bytearray()
     for offset in range(0, len(row_rgba), group_size):
