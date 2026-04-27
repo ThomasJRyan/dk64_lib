@@ -46,6 +46,17 @@ def _rgba16(red: int, green: int, blue: int, alpha: int = 255) -> bytes:
     return raw.to_bytes(2, "big")
 
 
+def _indexed_rgba(*indices: int) -> bytes:
+    colors = (
+        (0, 0, 0, 255),
+        (255, 0, 0, 255),
+        (0, 255, 0, 255),
+        (0, 0, 255, 255),
+        (255, 255, 255, 255),
+    )
+    return bytes(component for index in indices for component in colors[index])
+
+
 def _vertex(
     x: int,
     y: int,
@@ -272,7 +283,7 @@ class TextureExportTest(unittest.TestCase):
             ((1, 1), bytes((255, 255, 255, 255))),
         )
 
-    def test_test_mipmap_export_stitches_every_other_source_row(self):
+    def test_test_mipmap_export_stitches_rows_for_first_two_levels(self):
         palette = b"".join(
             (
                 _rgba16(0, 0, 0),
@@ -283,46 +294,65 @@ class TextureExportTest(unittest.TestCase):
             )
         )
         texture_data = [
-            SimpleNamespace(raw_data=b"\x12\x34\x21\x43"),
+            SimpleNamespace(
+                raw_data=(
+                    b"\x12\x34"
+                    b"\x43\x21"
+                    b"\x21\x43"
+                    b"\x34\x12"
+                    b"\x11\x22"
+                    b"\x00\x00"
+                    b"\x44\x33"
+                    b"\x00\x00"
+                )
+            ),
             SimpleNamespace(raw_data=palette),
         ]
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            filepath = export_test_mipmap(
+            filepaths = export_test_mipmap(
                 texture_data,
                 folderpath=tmpdir,
-                width=2,
-                height=4,
+                width=4,
+                height=8,
             )
 
             self.assertEqual(
-                filepath.name,
-                "tex_0_pal_1_f2_s0_2x4_mip1_2x2.png",
+                [filepath.name for filepath in filepaths],
+                [
+                    "tex_0_pal_1_f2_s0_4x8_mip1_4x4.png",
+                    "tex_0_pal_1_f2_s0_4x8_mip2_2x2.png",
+                ],
             )
             self.assertEqual(
-                _png_rgba(filepath.read_bytes()),
+                _png_rgba(filepaths[0].read_bytes()),
+                (
+                    (4, 4),
+                    _indexed_rgba(
+                        1,
+                        2,
+                        3,
+                        4,
+                        2,
+                        1,
+                        4,
+                        3,
+                        1,
+                        1,
+                        2,
+                        2,
+                        4,
+                        4,
+                        3,
+                        3,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                _png_rgba(filepaths[1].read_bytes()),
                 (
                     (2, 2),
-                    bytes(
-                        (
-                            255,
-                            0,
-                            0,
-                            255,
-                            0,
-                            255,
-                            0,
-                            255,
-                            0,
-                            255,
-                            0,
-                            255,
-                            255,
-                            0,
-                            0,
-                            255,
-                        )
-                    ),
+                    _indexed_rgba(4, 3, 3, 4),
                 ),
             )
 

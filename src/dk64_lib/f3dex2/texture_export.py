@@ -532,14 +532,12 @@ def test_mipmap_export(
     size: int = 0,
     width: int = 32,
     height: int = 64,
-) -> pathlib.Path:
-    """Export the first DK64 packed mipmap region for quick visual iteration."""
+) -> list[pathlib.Path]:
+    """Export DK64 packed mipmap candidates for quick visual iteration."""
     texture_data = _geometry_texture_table(texture_source)
     raw_texture = _raw_texture_data(texture_data, texture_index)
     raw_palette = _raw_texture_data(texture_data, palette_index)
 
-    mip_width = width
-    mip_height = max(1, height // 2)
     source_rgba = decode_texture(
         raw_texture,
         fmt=fmt,
@@ -548,17 +546,46 @@ def test_mipmap_export(
         height=height,
         palette_data=raw_palette,
     )
-    rgba = _every_other_row_rgba(source_rgba, width, mip_height)
-
     palette_name = "none" if palette_index is None else str(palette_index)
-    filename = (
-        f"tex_{texture_index}_pal_{palette_name}_f{fmt}_s{size}_"
-        f"{width}x{height}_mip1_{mip_width}x{mip_height}.png"
+
+    mip_levels = (
+        (
+            1,
+            width,
+            max(1, height // 2),
+            _stitch_rows_rgba(
+                source_rgba,
+                source_width=width,
+                target_width=width,
+                target_height=max(1, height // 2),
+                start_row=0,
+            ),
+        ),
+        (
+            2,
+            max(1, width // 2),
+            max(1, height // 4),
+            _stitch_rows_rgba(
+                source_rgba,
+                source_width=width,
+                target_width=max(1, width // 2),
+                target_height=max(1, height // 4),
+                start_row=1,
+            ),
+        ),
     )
-    filepath = pathlib.Path(folderpath) / filename
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    filepath.write_bytes(rgba_to_png(mip_width, mip_height, rgba))
-    return filepath
+
+    filepaths = list()
+    for level, mip_width, mip_height, rgba in mip_levels:
+        filename = (
+            f"tex_{texture_index}_pal_{palette_name}_f{fmt}_s{size}_"
+            f"{width}x{height}_mip{level}_{mip_width}x{mip_height}.png"
+        )
+        filepath = pathlib.Path(folderpath) / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_bytes(rgba_to_png(mip_width, mip_height, rgba))
+        filepaths.append(filepath)
+    return filepaths
 
 
 test_mipmap_export.__test__ = False
@@ -576,12 +603,21 @@ def _raw_texture_data(texture_data: tuple[object, ...], index: int | None) -> by
     return getattr(texture_data[index], "raw_data", None)
 
 
-def _every_other_row_rgba(source_rgba: bytes, width: int, mip_height: int) -> bytes:
-    row_size = width * 4
+def _stitch_rows_rgba(
+    source_rgba: bytes,
+    source_width: int,
+    target_width: int,
+    target_height: int,
+    start_row: int,
+) -> bytes:
+    source_row_size = source_width * 4
+    target_row_size = target_width * 4
     mip_rgba = bytearray()
-    for mip_row in range(mip_height):
-        source_row_start = mip_row * 2 * row_size
-        mip_rgba.extend(source_rgba[source_row_start : source_row_start + row_size])
+    for mip_row in range(target_height):
+        source_row_start = (start_row + (mip_row * 2)) * source_row_size
+        mip_rgba.extend(
+            source_rgba[source_row_start : source_row_start + target_row_size]
+        )
     return bytes(mip_rgba)
 
 
