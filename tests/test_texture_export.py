@@ -96,6 +96,49 @@ def _vertex(
     )
 
 
+def _textured_triangle_display_list(
+    texture_index: int,
+    fmt: int,
+    size: int,
+    width: int,
+    height: int,
+    palette_index: int | None = None,
+) -> DisplayList:
+    image_type = (fmt << 5) | (size << 3)
+    commands = [
+        _g_texture(level=3),
+        _words(0xFD000000 | (image_type << 16), texture_index),
+        _settile(fmt=fmt, size=size, tile=7),
+        _words(0xF3000000, 0x07000000),
+        _settile(fmt=fmt, size=size, tile=0),
+        _settilesize(tile=0, width=width, height=height),
+    ]
+    if palette_index is not None:
+        commands.extend(
+            (
+                _words(0xFD100000, palette_index),
+                _words(0xF0000000, 0x0703C000),
+            )
+        )
+    commands.extend(
+        (
+            b"\x01\x00\x30\x06\x00\x00\x00\x00",
+            b"\x05\x00\x02\x04\x00\x00\x00\x00",
+            b"\xdf\x00\x00\x00\x00\x00\x00\x00",
+        )
+    )
+    return DisplayList(
+        raw_data=b"".join(commands),
+        raw_vertex_data=(
+            _vertex(0, 0, 0, 0, 0)
+            + _vertex(1, 0, 0, width * 32, 0)
+            + _vertex(0, 1, 0, 0, height * 32)
+        ),
+        vertex_pointer=0,
+        offset=0,
+    )
+
+
 def _png_rgba(data: bytes) -> tuple[tuple[int, int], bytes]:
     width = height = 0
     idat = bytearray()
@@ -287,6 +330,110 @@ class TextureExportTest(unittest.TestCase):
         )
         self.assertNotIn("mip", export.mtl_data)
         self.assertEqual(_png_rgba(export.images[0].data)[0], (2, 2))
+
+    def test_exporter_writes_packed_rgba_mipmap_levels(self):
+        rgba_pixels = []
+        for row in range(32):
+            rgba_pixels.extend((1, 2, 3, 4) * 8)
+        for row_pair in range(8):
+            rgba_pixels.extend((1, 2, 3, 4) * 4)
+            rgba_pixels.extend((1, 2, 3, 4) * 4)
+        for row_group in range(2):
+            rgba_pixels.extend((1, 2, 3, 4) * 2)
+            rgba_pixels.extend((1, 2, 3, 4) * 2)
+            rgba_pixels.extend((1, 2, 3, 4) * 2)
+            rgba_pixels.extend((1, 2, 3, 4) * 2)
+        rgba_pixels.extend((1, 2, 3, 4) * 4)
+        texture_data = [
+            SimpleNamespace(raw_data=b""),
+            SimpleNamespace(raw_data=b""),
+            SimpleNamespace(raw_data=_indexed_rgba16(*rgba_pixels)),
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=2,
+            fmt=0,
+            size=2,
+            width=32,
+            height=32,
+        )
+
+        export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
+
+        self.assertIn("usemtl tex_2_pal_none_f0_s2_32x32", export.obj_data)
+        self.assertIn(
+            "map_Kd textures/tex_2_pal_none_f0_s2_32x32.png",
+            export.mtl_data,
+        )
+        self.assertEqual(
+            [image.filename for image in export.images],
+            [
+                "textures/tex_2_pal_none_f0_s2_32x32.png",
+                "textures/tex_2_pal_none_f0_s2_32x32_mip1_16x16.png",
+                "textures/tex_2_pal_none_f0_s2_32x32_mip2_8x8.png",
+                "textures/tex_2_pal_none_f0_s2_32x32_mip3_4x4.png",
+            ],
+        )
+        self.assertFalse(any("_base_" in image.filename for image in export.images))
+        self.assertEqual(_png_rgba(export.images[0].data)[0], (32, 32))
+        self.assertEqual(_png_rgba(export.images[1].data)[0], (16, 16))
+        mip2_size, mip2_pixels = _png_rgba(export.images[2].data)
+        self.assertEqual(mip2_size, (8, 8))
+        self.assertEqual(
+            mip2_pixels[8 * 4 : 16 * 4],
+            _indexed_rgba(*(3, 4, 1, 2) * 2),
+        )
+
+    def test_exporter_writes_packed_ci4_mipmap_levels(self):
+        palette = b"".join(_rgba16(value, value, value) for value in range(0, 256, 17))
+        ci4_pixels = []
+        for row in range(64):
+            ci4_pixels.extend(tuple(range(16)) * 2)
+        for row in range(32):
+            ci4_pixels.extend(tuple(range(16)))
+        for row_pair in range(8):
+            ci4_pixels.extend(tuple(range(8)))
+            ci4_pixels.extend([0] * 16)
+            ci4_pixels.extend(tuple(range(8)))
+        for row_pair in range(4):
+            ci4_pixels.extend(tuple(range(4)))
+            ci4_pixels.extend([0] * 20)
+            ci4_pixels.extend(tuple(range(4)))
+            ci4_pixels.extend([0] * 4)
+        ci4_pixels.extend([0] * (2944 - len(ci4_pixels)))
+        texture_data = [
+            SimpleNamespace(raw_data=_ci4_indices(*ci4_pixels)),
+            SimpleNamespace(raw_data=palette),
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=2,
+            size=0,
+            width=32,
+            height=64,
+            palette_index=1,
+        )
+
+        export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
+
+        self.assertIn("usemtl tex_0_pal_1_f2_s0_32x64", export.obj_data)
+        self.assertIn(
+            "map_Kd textures/tex_0_pal_1_f2_s0_32x64.png",
+            export.mtl_data,
+        )
+        self.assertEqual(
+            [image.filename for image in export.images],
+            [
+                "textures/tex_0_pal_1_f2_s0_32x64.png",
+                "textures/tex_0_pal_1_f2_s0_32x64_mip1_16x32.png",
+                "textures/tex_0_pal_1_f2_s0_32x64_mip2_8x16.png",
+                "textures/tex_0_pal_1_f2_s0_32x64_mip3_4x8.png",
+            ],
+        )
+        self.assertFalse(any("_base_" in image.filename for image in export.images))
+        self.assertEqual(_png_rgba(export.images[0].data)[0], (32, 64))
+        self.assertEqual(_png_rgba(export.images[1].data)[0], (16, 32))
+        self.assertEqual(_png_rgba(export.images[2].data)[0], (8, 16))
+        self.assertEqual(_png_rgba(export.images[3].data)[0], (4, 8))
 
     def test_test_mipmap_export_stitches_rows_for_test_textures(self):
         palette = b"".join(

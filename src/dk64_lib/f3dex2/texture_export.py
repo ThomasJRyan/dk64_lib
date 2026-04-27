@@ -64,6 +64,14 @@ class _TextureKey:
 
 
 @dataclass(frozen=True, slots=True)
+class _DecodedTextureLevel:
+    level: int | None
+    width: int
+    height: int
+    rgba: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class _MeshGroup:
     vertices: tuple[Vertex, ...]
     triangles: tuple[Triangle, ...]
@@ -178,11 +186,9 @@ class TexturedObjExporter:
             if texture
         )
         images = tuple(
-            TextureImageFile(
-                filename=f"{texture_folder}/{texture.image_filename}",
-                data=self._texture_png(texture),
-            )
+            image
             for texture in textures
+            for image in self._texture_images(texture, texture_folder)
         )
         return TexturedObjExport(
             obj_data=self._obj_data(groups, mtl_filename),
@@ -326,13 +332,33 @@ class TexturedObjExporter:
             )
         return "\n".join(lines)
 
-    def _texture_png(self, texture: _TextureKey) -> bytes:
+    def _texture_images(
+        self,
+        texture: _TextureKey,
+        texture_folder: str,
+    ) -> tuple[TextureImageFile, ...]:
+        return tuple(
+            TextureImageFile(
+                filename=f"{texture_folder}/{_texture_level_filename(texture, level)}",
+                data=rgba_to_png(level.width, level.height, level.rgba),
+            )
+            for level in self._decoded_texture_levels(texture)
+        )
+
+    def _decoded_texture_levels(
+        self,
+        texture: _TextureKey,
+    ) -> tuple[_DecodedTextureLevel, ...]:
         raw_texture = self._raw_texture(texture.image_index)
         raw_palette = (
             self._raw_texture(texture.palette_index)
             if texture.palette_index is not None
             else None
         )
+        mip_levels = _decode_packed_mipmap_levels(texture, raw_texture, raw_palette)
+        if mip_levels:
+            return mip_levels
+
         rgba = decode_texture(
             raw_texture,
             fmt=texture.fmt,
@@ -341,7 +367,7 @@ class TexturedObjExporter:
             height=texture.height,
             palette_data=raw_palette,
         )
-        return rgba_to_png(texture.width, texture.height, rgba)
+        return (_DecodedTextureLevel(None, texture.width, texture.height, rgba),)
 
     def _raw_texture(self, index: int | None) -> bytes | None:
         if index is None or index < 0 or index >= len(self._texture_data):
@@ -420,6 +446,241 @@ def save_textured_obj_export(
         written_paths.append(image_path)
 
     return written_paths
+
+
+def _texture_level_filename(
+    texture: _TextureKey,
+    level: _DecodedTextureLevel,
+) -> str:
+    if level.level is None:
+        return texture.image_filename
+    return f"{texture.material_name}_mip{level.level}_{level.width}x{level.height}.png"
+
+
+def _decode_packed_mipmap_levels(
+    texture: _TextureKey,
+    raw_texture: bytes | None,
+    raw_palette: bytes | None,
+) -> tuple[_DecodedTextureLevel, ...]:
+    if (
+        texture.fmt == 2
+        and texture.size == 0
+        and texture.width == 32
+        and texture.height == 64
+        and _has_packed_mipmap_storage(
+            raw_texture,
+            texture.size,
+            _packed_ci4_mipmap_storage_pixels(texture.width, texture.height),
+        )
+    ):
+        return _decode_packed_ci4_mipmap_levels(texture, raw_texture, raw_palette)
+
+    if (
+        texture.fmt == 0
+        and texture.size == 2
+        and texture.width == 32
+        and texture.height == 32
+        and _has_packed_mipmap_storage(
+            raw_texture,
+            texture.size,
+            _packed_rgba_mipmap_storage_pixels(texture.width, texture.height),
+        )
+    ):
+        return _decode_packed_rgba_mipmap_levels(texture, raw_texture, raw_palette)
+
+    return tuple()
+
+
+def _decode_packed_ci4_mipmap_levels(
+    texture: _TextureKey,
+    raw_texture: bytes | None,
+    raw_palette: bytes | None,
+) -> tuple[_DecodedTextureLevel, ...]:
+    base_width, base_height = _raw_texture_dimensions(
+        raw_texture,
+        texture.size,
+        texture.width,
+    )
+    base_rgba = decode_texture(
+        raw_texture,
+        fmt=texture.fmt,
+        size=texture.size,
+        width=base_width,
+        height=base_height,
+        palette_data=raw_palette,
+    )
+    return _packed_ci4_mipmap_levels(texture.width, texture.height, base_rgba)
+
+
+def _decode_packed_rgba_mipmap_levels(
+    texture: _TextureKey,
+    raw_texture: bytes | None,
+    raw_palette: bytes | None,
+) -> tuple[_DecodedTextureLevel, ...]:
+    base_width, base_height = _raw_texture_dimensions(
+        raw_texture,
+        texture.size,
+        texture.width,
+    )
+    base_rgba = decode_texture(
+        raw_texture,
+        fmt=texture.fmt,
+        size=texture.size,
+        width=base_width,
+        height=base_height,
+        palette_data=raw_palette,
+    )
+    return _packed_rgba_mipmap_levels(texture.width, texture.height, base_rgba)
+
+
+def _packed_ci4_mipmap_levels(
+    width: int,
+    height: int,
+    base_rgba: bytes,
+) -> tuple[_DecodedTextureLevel, ...]:
+    level0_width, level0_height = width, height
+    level1_width, level1_height = max(1, width // 2), max(1, height // 2)
+    level2_width, level2_height = max(1, width // 4), max(1, height // 4)
+    level3_width, level3_height = max(1, width // 8), max(1, height // 8)
+    level0_pixels = level0_width * level0_height
+    level1_pixels = level1_width * level1_height
+    level2_storage_pixels = width * math.ceil(level2_height / 2)
+    level2_start_pixel = level0_pixels + level1_pixels
+    level3_start_pixel = level2_start_pixel + level2_storage_pixels
+
+    level_specs = (
+        (None, level0_width, level0_height, 0),
+        (1, level1_width, level1_height, level0_pixels),
+        (2, level2_width, level2_height, level2_start_pixel),
+        (3, level3_width, level3_height, level3_start_pixel),
+    )
+    levels = list()
+
+    for level, output_width, output_height, start_pixel in level_specs:
+        if level in (2, 3):
+            skipped_pixels = width // 2 if level == 2 else width - (output_width * 3)
+            rgba = _slice_sparse_paired_rows_rgba(
+                base_rgba,
+                start_pixel=start_pixel,
+                output_width=output_width,
+                output_height=output_height,
+                source_group_pixels=width,
+                skipped_pixels=skipped_pixels,
+            )
+        else:
+            rgba = _slice_flat_rgba(base_rgba, start_pixel, output_width, output_height)
+        if level in (None, 1):
+            rgba = _swap_odd_rows_rgba(
+                rgba,
+                source_width=output_width,
+                group_pixels=16,
+            )
+        levels.append(_DecodedTextureLevel(level, output_width, output_height, rgba))
+
+    return tuple(levels)
+
+
+def _packed_rgba_mipmap_levels(
+    width: int,
+    height: int,
+    base_rgba: bytes,
+) -> tuple[_DecodedTextureLevel, ...]:
+    level0_width, level0_height = width, height
+    level1_width, level1_height = max(1, width // 2), max(1, height // 2)
+    level2_width, level2_height = max(1, width // 4), max(1, height // 4)
+    level3_width, level3_height = max(1, width // 8), max(1, height // 8)
+    level0_pixels = level0_width * level0_height
+    level1_storage_pixels = width * math.ceil(level1_height / 2)
+    level2_storage_pixels = width * math.ceil(level2_height / 4)
+    level2_start_pixel = level0_pixels + level1_storage_pixels
+    level3_start_pixel = level2_start_pixel + level2_storage_pixels
+
+    return (
+        _DecodedTextureLevel(
+            None,
+            level0_width,
+            level0_height,
+            _swap_odd_rows_rgba(
+                _slice_flat_rgba(base_rgba, 0, level0_width, level0_height),
+                source_width=level0_width,
+                group_pixels=4,
+            ),
+        ),
+        _DecodedTextureLevel(
+            1,
+            level1_width,
+            level1_height,
+            _slice_sparse_paired_rows_rgba(
+                base_rgba,
+                start_pixel=level0_pixels,
+                output_width=level1_width,
+                output_height=level1_height,
+                source_group_pixels=width,
+                skipped_pixels=0,
+                swap_second_row_group_pixels=4,
+            ),
+        ),
+        _DecodedTextureLevel(
+            2,
+            level2_width,
+            level2_height,
+            _slice_segmented_rows_rgba(
+                base_rgba,
+                start_pixel=level2_start_pixel,
+                output_width=level2_width,
+                output_height=level2_height,
+                source_group_pixels=width,
+                swap_group_pixels=4,
+            ),
+        ),
+        _DecodedTextureLevel(
+            3,
+            level3_width,
+            level3_height,
+            _slice_segmented_rows_rgba(
+                base_rgba,
+                start_pixel=level3_start_pixel,
+                output_width=level3_width,
+                output_height=level3_height,
+                source_group_pixels=level3_width * 4,
+                swap_group_pixels=4,
+            ),
+        ),
+    )
+
+
+def _packed_ci4_mipmap_storage_pixels(width: int, height: int) -> int:
+    level0_width, level0_height = width, height
+    level1_width, level1_height = max(1, width // 2), max(1, height // 2)
+    level2_height = max(1, height // 4)
+    level3_height = max(1, height // 8)
+    return (
+        (level0_width * level0_height)
+        + (level1_width * level1_height)
+        + (width * math.ceil(level2_height / 2))
+        + (width * math.ceil(level3_height / 2))
+    )
+
+
+def _packed_rgba_mipmap_storage_pixels(width: int, height: int) -> int:
+    level0_width, level0_height = width, height
+    level1_height = max(1, height // 2)
+    level2_height = max(1, height // 4)
+    level3_width, level3_height = max(1, width // 8), max(1, height // 8)
+    return (
+        (level0_width * level0_height)
+        + (width * math.ceil(level1_height / 2))
+        + (width * math.ceil(level2_height / 4))
+        + ((level3_width * 4) * math.ceil(level3_height / 4))
+    )
+
+
+def _has_packed_mipmap_storage(
+    raw_texture: bytes | None,
+    size: int,
+    required_pixels: int,
+) -> bool:
+    return _raw_texture_pixel_count(raw_texture, size) >= required_pixels
 
 
 def test_mipmap_export(
@@ -587,54 +848,11 @@ def _test_packed_mipmap_export_for_texture(
     base_height: int,
     base_rgba: bytes,
 ) -> list[pathlib.Path]:
-    level0_width, level0_height = width, height
-    level1_width, level1_height = max(1, width // 2), max(1, height // 2)
-    level2_width, level2_height = max(1, width // 4), max(1, height // 4)
-    level3_width, level3_height = max(1, width // 8), max(1, height // 8)
-    level0_pixels = level0_width * level0_height
-    level1_pixels = level1_width * level1_height
-    level2_storage_pixels = width * math.ceil(level2_height / 2)
-    level2_start_pixel = level0_pixels + level1_pixels
-    level3_start_pixel = level2_start_pixel + level2_storage_pixels
-
-    mip_specs = (
-        (None, level0_width, level0_height, 0),
-        (1, level1_width, level1_height, level0_pixels),
-        (
-            2,
-            level2_width,
-            level2_height,
-            level2_start_pixel,
-        ),
-        (
-            3,
-            level3_width,
-            level3_height,
-            level3_start_pixel,
-        ),
-    )
     outputs = [("base", base_width, base_height, base_rgba)]
-
-    for level, output_width, output_height, start_pixel in mip_specs:
-        if level in (2, 3):
-            skipped_pixels = width // 2 if level == 2 else width - (output_width * 3)
-            rgba = _slice_sparse_paired_rows_rgba(
-                base_rgba,
-                start_pixel=start_pixel,
-                output_width=output_width,
-                output_height=output_height,
-                source_group_pixels=width,
-                skipped_pixels=skipped_pixels,
-            )
-        else:
-            rgba = _slice_flat_rgba(base_rgba, start_pixel, output_width, output_height)
-        if level in (None, 1):
-            rgba = _swap_odd_rows_rgba(
-                rgba,
-                source_width=output_width,
-                group_pixels=16,
-            )
-        outputs.append((level, output_width, output_height, rgba))
+    outputs.extend(
+        (level.level, level.width, level.height, level.rgba)
+        for level in _packed_ci4_mipmap_levels(width, height, base_rgba)
+    )
 
     return _write_test_mipmap_outputs(
         folderpath,
@@ -660,60 +878,10 @@ def _test_packed_rgba_mipmap_export_for_texture(
     base_height: int,
     base_rgba: bytes,
 ) -> list[pathlib.Path]:
-    level0_width, level0_height = width, height
-    level1_width, level1_height = max(1, width // 2), max(1, height // 2)
-    level2_width, level2_height = max(1, width // 4), max(1, height // 4)
-    level3_width, level3_height = max(1, width // 8), max(1, height // 8)
-    level0_pixels = level0_width * level0_height
-    level1_storage_pixels = width * math.ceil(level1_height / 2)
-    level2_storage_pixels = width * math.ceil(level2_height / 4)
-    level2_start_pixel = level0_pixels + level1_storage_pixels
-    level3_start_pixel = level2_start_pixel + level2_storage_pixels
-
-    level0_rgba = _swap_odd_rows_rgba(
-        _slice_flat_rgba(base_rgba, 0, level0_width, level0_height),
-        source_width=level0_width,
-        group_pixels=4,
-    )
-    level1_rgba = _slice_sparse_paired_rows_rgba(
-        base_rgba,
-        start_pixel=level0_pixels,
-        output_width=level1_width,
-        output_height=level1_height,
-        source_group_pixels=width,
-        skipped_pixels=0,
-        swap_second_row_group_pixels=4,
-    )
-    outputs = (
-        ("base", base_width, base_height, base_rgba),
-        (None, level0_width, level0_height, level0_rgba),
-        (1, level1_width, level1_height, level1_rgba),
-        (
-            2,
-            level2_width,
-            level2_height,
-            _slice_segmented_rows_rgba(
-                base_rgba,
-                start_pixel=level2_start_pixel,
-                output_width=level2_width,
-                output_height=level2_height,
-                source_group_pixels=width,
-                swap_group_pixels=4,
-            ),
-        ),
-        (
-            3,
-            level3_width,
-            level3_height,
-            _slice_segmented_rows_rgba(
-                base_rgba,
-                start_pixel=level3_start_pixel,
-                output_width=level3_width,
-                output_height=level3_height,
-                source_group_pixels=level3_width * 4,
-                swap_group_pixels=4,
-            ),
-        ),
+    outputs = [("base", base_width, base_height, base_rgba)]
+    outputs.extend(
+        (level.level, level.width, level.height, level.rgba)
+        for level in _packed_rgba_mipmap_levels(width, height, base_rgba)
     )
 
     return _write_test_mipmap_outputs(
@@ -724,7 +892,7 @@ def _test_packed_rgba_mipmap_export_for_texture(
         size,
         width,
         height,
-        outputs,
+        tuple(outputs),
     )
 
 
