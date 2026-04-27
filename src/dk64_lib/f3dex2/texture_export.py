@@ -553,12 +553,10 @@ def test_mipmap_export(
             1,
             width,
             max(1, height // 2),
-            _stitch_rows_rgba(
+            _stitch_interleaved_even_rows_rgba(
                 source_rgba,
                 source_width=width,
-                target_width=width,
-                target_height=max(1, height // 2),
-                start_row=0,
+                source_height=height,
             ),
         ),
         (
@@ -618,6 +616,21 @@ def _stitch_rows_rgba(
         mip_rgba.extend(
             source_rgba[source_row_start : source_row_start + target_row_size]
         )
+    return bytes(mip_rgba)
+
+
+def _stitch_interleaved_even_rows_rgba(
+    source_rgba: bytes,
+    source_width: int,
+    source_height: int,
+) -> bytes:
+    row_size = source_width * 4
+    half_height = max(1, source_height // 2)
+    mip_rgba = bytearray()
+    for mip_row in range(half_height):
+        source_row = ((mip_row // 2) * 2) + (half_height if mip_row % 2 else 0)
+        source_row_start = source_row * row_size
+        mip_rgba.extend(source_rgba[source_row_start : source_row_start + row_size])
     return bytes(mip_rgba)
 
 
