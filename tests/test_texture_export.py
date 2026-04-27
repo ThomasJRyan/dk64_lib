@@ -296,7 +296,8 @@ class TextureExportTest(unittest.TestCase):
         ci4_pixels = []
         for row in range(64):
             ci4_pixels.extend(tuple(range(16)) * 2)
-        ci4_pixels.extend([1] * (16 * 32))
+        for row in range(32):
+            ci4_pixels.extend(tuple(range(16)))
         ci4_pixels.extend([2] * (8 * 16))
         ci4_pixels.extend([3] * (4 * 8))
         ci4_pixels.extend([0] * (2944 - len(ci4_pixels)))
@@ -398,7 +399,8 @@ class TextureExportTest(unittest.TestCase):
             self.assertEqual(_png_rgba(filepaths[4].read_bytes())[0], (32, 92))
             tex0_size, tex0_pixels = _png_rgba(filepaths[5].read_bytes())
             self.assertEqual(tex0_size, (32, 64))
-            self.assertEqual(_png_rgba(filepaths[6].read_bytes())[0], (16, 32))
+            tex0_mip1_size, tex0_mip1_pixels = _png_rgba(filepaths[6].read_bytes())
+            self.assertEqual(tex0_mip1_size, (16, 32))
             self.assertEqual(_png_rgba(filepaths[7].read_bytes())[0], (8, 16))
             self.assertEqual(_png_rgba(filepaths[8].read_bytes())[0], (4, 8))
             expected_row0 = decode_texture(
@@ -426,6 +428,27 @@ class TextureExportTest(unittest.TestCase):
             )
             self.assertEqual(tex0_pixels[: 32 * 4], expected_row0)
             self.assertEqual(tex0_pixels[32 * 4 : 64 * 4], expected_row1)
+            expected_mip1_row0 = decode_texture(
+                _ci4_indices(*tuple(range(16))),
+                fmt=2,
+                size=0,
+                width=16,
+                height=1,
+                palette_data=palette,
+            )
+            expected_mip1_row1 = decode_texture(
+                _ci4_indices(*(tuple(range(8, 16)) + tuple(range(8)))),
+                fmt=2,
+                size=0,
+                width=16,
+                height=1,
+                palette_data=palette,
+            )
+            self.assertEqual(tex0_mip1_pixels[: 16 * 4], expected_mip1_row0)
+            self.assertEqual(
+                tex0_mip1_pixels[16 * 4 : 32 * 4],
+                expected_mip1_row1,
+            )
 
     def test_save_textured_obj_export_writes_assets(self):
         texture_data = [SimpleNamespace(raw_data=_rgba16(255, 0, 0))]

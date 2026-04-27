@@ -582,7 +582,7 @@ def _test_packed_mipmap_export_for_texture(
 
     for level, output_width, output_height, start_pixel in mip_specs:
         rgba = _slice_flat_rgba(base_rgba, start_pixel, output_width, output_height)
-        if level is None:
+        if level in (None, 1):
             rgba = _swap_odd_rows_rgba(
                 rgba,
                 source_width=output_width,
