@@ -506,6 +506,59 @@ class TextureExportTest(unittest.TestCase):
                 expected_mip3_row,
             )
 
+    def test_test_mipmap_export_stitches_packed_rgba_second_level(self):
+        rgba_pixels = []
+        for row in range(32):
+            rgba_pixels.extend((1, 2, 3, 4) * 8)
+        for row_pair in range(8):
+            rgba_pixels.extend((1, 2, 3, 4) * 4)
+            rgba_pixels.extend((1, 2, 3, 4) * 4)
+        rgba_pixels.extend([2] * (8 * 8))
+        rgba_pixels.extend([3] * (4 * 4))
+        texture_data = [
+            SimpleNamespace(raw_data=b""),
+            SimpleNamespace(raw_data=b""),
+            SimpleNamespace(raw_data=_indexed_rgba16(*rgba_pixels)),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepaths = export_test_mipmap(
+                texture_data,
+                folderpath=tmpdir,
+                include_ci4_reference=False,
+            )
+
+            self.assertEqual(
+                [filepath.name for filepath in filepaths],
+                [
+                    "tex_2_pal_none_f0_s2_32x32_base_32x43.png",
+                    "tex_2_pal_none_f0_s2_32x32.png",
+                    "tex_2_pal_none_f0_s2_32x32_mip1_16x16.png",
+                    "tex_2_pal_none_f0_s2_32x32_mip2_8x8.png",
+                    "tex_2_pal_none_f0_s2_32x32_mip3_4x4.png",
+                ],
+            )
+            rgba_size, rgba_pixels_out = _png_rgba(filepaths[1].read_bytes())
+            self.assertEqual(rgba_size, (32, 32))
+            self.assertEqual(
+                rgba_pixels_out[: 8 * 4],
+                _indexed_rgba(1, 2, 3, 4, 1, 2, 3, 4),
+            )
+            self.assertEqual(
+                rgba_pixels_out[32 * 4 : 40 * 4],
+                _indexed_rgba(3, 4, 1, 2, 3, 4, 1, 2),
+            )
+            mip1_size, mip1_pixels = _png_rgba(filepaths[2].read_bytes())
+            self.assertEqual(mip1_size, (16, 16))
+            self.assertEqual(
+                mip1_pixels[: 16 * 4],
+                _indexed_rgba(*(1, 2, 3, 4) * 4),
+            )
+            self.assertEqual(
+                mip1_pixels[16 * 4 : 32 * 4],
+                _indexed_rgba(*(3, 4, 1, 2) * 4),
+            )
+
     def test_save_textured_obj_export_writes_assets(self):
         texture_data = [SimpleNamespace(raw_data=_rgba16(255, 0, 0))]
         commands = b"".join(

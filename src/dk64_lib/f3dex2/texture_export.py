@@ -491,6 +491,26 @@ def _test_mipmap_export_for_texture(
             base_height,
             base_rgba,
         )
+    if (texture_index, palette_index, fmt, size, width, height) == (
+        2,
+        None,
+        0,
+        2,
+        32,
+        32,
+    ):
+        return _test_packed_rgba_mipmap_export_for_texture(
+            folderpath,
+            texture_index,
+            palette_index,
+            fmt,
+            size,
+            width,
+            height,
+            base_width,
+            base_height,
+            base_rgba,
+        )
 
     source_rgba = decode_texture(
         raw_texture,
@@ -628,6 +648,81 @@ def _test_packed_mipmap_export_for_texture(
     )
 
 
+def _test_packed_rgba_mipmap_export_for_texture(
+    folderpath: pathlib.Path,
+    texture_index: int,
+    palette_index: int | None,
+    fmt: int,
+    size: int,
+    width: int,
+    height: int,
+    base_width: int,
+    base_height: int,
+    base_rgba: bytes,
+) -> list[pathlib.Path]:
+    level0_width, level0_height = width, height
+    level1_width, level1_height = max(1, width // 2), max(1, height // 2)
+    level2_width, level2_height = max(1, width // 4), max(1, height // 4)
+    level3_width, level3_height = max(1, width // 8), max(1, height // 8)
+    level0_pixels = level0_width * level0_height
+    level1_storage_pixels = width * math.ceil(level1_height / 2)
+    level2_start_pixel = level0_pixels + level1_storage_pixels
+    level3_start_pixel = level2_start_pixel + (level2_width * level2_height)
+
+    level0_rgba = _swap_odd_rows_rgba(
+        _slice_flat_rgba(base_rgba, 0, level0_width, level0_height),
+        source_width=level0_width,
+        group_pixels=4,
+    )
+    level1_rgba = _slice_sparse_paired_rows_rgba(
+        base_rgba,
+        start_pixel=level0_pixels,
+        output_width=level1_width,
+        output_height=level1_height,
+        source_group_pixels=width,
+        skipped_pixels=0,
+        swap_second_row_group_pixels=4,
+    )
+    outputs = (
+        ("base", base_width, base_height, base_rgba),
+        (None, level0_width, level0_height, level0_rgba),
+        (1, level1_width, level1_height, level1_rgba),
+        (
+            2,
+            level2_width,
+            level2_height,
+            _slice_flat_rgba(
+                base_rgba,
+                level2_start_pixel,
+                level2_width,
+                level2_height,
+            ),
+        ),
+        (
+            3,
+            level3_width,
+            level3_height,
+            _slice_flat_rgba(
+                base_rgba,
+                level3_start_pixel,
+                level3_width,
+                level3_height,
+            ),
+        ),
+    )
+
+    return _write_test_mipmap_outputs(
+        folderpath,
+        texture_index,
+        palette_index,
+        fmt,
+        size,
+        width,
+        height,
+        outputs,
+    )
+
+
 def _write_test_mipmap_outputs(
     folderpath: pathlib.Path,
     texture_index: int,
@@ -734,6 +829,7 @@ def _slice_sparse_paired_rows_rgba(
     output_height: int,
     source_group_pixels: int,
     skipped_pixels: int,
+    swap_second_row_group_pixels: int | None = None,
 ) -> bytes:
     output_row_size = output_width * 4
     source_group_size = source_group_pixels * 4
@@ -750,7 +846,13 @@ def _slice_sparse_paired_rows_rgba(
         ]
         paired.extend((first_row + b"\x00" * output_row_size)[:output_row_size])
         if (row_pair * 2) + 1 < output_height:
-            paired.extend((second_row + b"\x00" * output_row_size)[:output_row_size])
+            second_row = (second_row + b"\x00" * output_row_size)[:output_row_size]
+            if swap_second_row_group_pixels:
+                second_row = _swap_pixel_group_halves_rgba(
+                    second_row,
+                    swap_second_row_group_pixels,
+                )
+            paired.extend(second_row)
 
     expected = output_width * output_height * 4
     return bytes(paired[:expected])
