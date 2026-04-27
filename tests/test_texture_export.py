@@ -288,7 +288,7 @@ class TextureExportTest(unittest.TestCase):
             )
         )
         texture_data = [
-            SimpleNamespace(raw_data=b"\x12" * 1024),
+            SimpleNamespace(raw_data=b"\x12" * 1472),
             SimpleNamespace(raw_data=palette),
             SimpleNamespace(
                 raw_data=_indexed_rgba16(
@@ -339,9 +339,11 @@ class TextureExportTest(unittest.TestCase):
             self.assertEqual(
                 [filepath.name for filepath in filepaths],
                 [
+                    "tex_2_pal_none_f0_s2_4x8_base_4x8.png",
                     "tex_2_pal_none_f0_s2_4x8.png",
                     "tex_2_pal_none_f0_s2_4x8_mip1_4x4.png",
                     "tex_2_pal_none_f0_s2_4x8_mip2_2x2.png",
+                    "tex_0_pal_1_f2_s0_32x64_base_32x92.png",
                     "tex_0_pal_1_f2_s0_32x64.png",
                     "tex_0_pal_1_f2_s0_32x64_mip1_32x32.png",
                     "tex_0_pal_1_f2_s0_32x64_mip2_16x16.png",
@@ -349,7 +351,7 @@ class TextureExportTest(unittest.TestCase):
             )
             self.assertEqual(_png_rgba(filepaths[0].read_bytes())[0], (4, 8))
             self.assertEqual(
-                _png_rgba(filepaths[1].read_bytes()),
+                _png_rgba(filepaths[2].read_bytes()),
                 (
                     (4, 4),
                     _indexed_rgba(
@@ -373,13 +375,14 @@ class TextureExportTest(unittest.TestCase):
                 ),
             )
             self.assertEqual(
-                _png_rgba(filepaths[2].read_bytes()),
+                _png_rgba(filepaths[3].read_bytes()),
                 (
                     (2, 2),
                     _indexed_rgba(4, 3, 3, 4),
                 ),
             )
-            self.assertEqual(_png_rgba(filepaths[3].read_bytes())[0], (32, 64))
+            self.assertEqual(_png_rgba(filepaths[4].read_bytes())[0], (32, 92))
+            self.assertEqual(_png_rgba(filepaths[5].read_bytes())[0], (32, 64))
 
     def test_save_textured_obj_export_writes_assets(self):
         texture_data = [SimpleNamespace(raw_data=_rgba16(255, 0, 0))]

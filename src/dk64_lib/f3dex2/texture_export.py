@@ -469,6 +469,15 @@ def _test_mipmap_export_for_texture(
 ) -> list[pathlib.Path]:
     raw_texture = _raw_texture_data(texture_data, texture_index)
     raw_palette = _raw_texture_data(texture_data, palette_index)
+    base_width, base_height = _raw_texture_dimensions(raw_texture, size, width)
+    base_rgba = decode_texture(
+        raw_texture,
+        fmt=fmt,
+        size=size,
+        width=base_width,
+        height=base_height,
+        palette_data=raw_palette,
+    )
     source_rgba = decode_texture(
         raw_texture,
         fmt=fmt,
@@ -479,6 +488,7 @@ def _test_mipmap_export_for_texture(
     )
 
     outputs = (
+        ("base", base_width, base_height, base_rgba),
         (None, width, height, source_rgba),
         (
             1,
@@ -531,7 +541,7 @@ def _test_mipmap_filename(
     size: int,
     width: int,
     height: int,
-    level: int | None,
+    level: int | str | None,
     output_width: int,
     output_height: int,
 ) -> str:
@@ -540,6 +550,8 @@ def _test_mipmap_filename(
         f"tex_{texture_index}_pal_{palette_name}_f{fmt}_s{size}_"
         f"{width}x{height}"
     )
+    if level == "base":
+        return f"{base}_base_{output_width}x{output_height}.png"
     if level is None:
         return f"{base}.png"
     return f"{base}_mip{level}_{output_width}x{output_height}.png"
@@ -558,6 +570,26 @@ def _raw_texture_data(texture_data: tuple[object, ...], index: int | None) -> by
     if index is None or index < 0 or index >= len(texture_data):
         return None
     return getattr(texture_data[index], "raw_data", None)
+
+
+def _raw_texture_dimensions(
+    raw_texture: bytes | None,
+    size: int,
+    width: int,
+) -> tuple[int, int]:
+    pixel_count = _raw_texture_pixel_count(raw_texture, size)
+    width = max(1, width)
+    height = max(1, math.ceil(pixel_count / width))
+    return width, height
+
+
+def _raw_texture_pixel_count(raw_texture: bytes | None, size: int) -> int:
+    if not raw_texture:
+        return 0
+    bits_per_texel = {0: 4, 1: 8, 2: 16, 3: 32}.get(size)
+    if not bits_per_texel:
+        return 0
+    return len(raw_texture) * 8 // bits_per_texel
 
 
 def _stitch_rows_rgba(
