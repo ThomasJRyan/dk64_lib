@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import zlib
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,23 @@ from dk64_lib.f3dex2.texture_export import (
 
 def _words(word0: int, word1: int) -> bytes:
     return word0.to_bytes(4, "big") + word1.to_bytes(4, "big")
+
+
+def _g_texture(level: int, tile: int = 0, on: int = 1) -> bytes:
+    return _words(
+        0xD7000000 | (level << 11) | (tile << 8) | (on << 1),
+        0xFFFFFFFF,
+    )
+
+
+def _settile(fmt: int, size: int, tile: int, tmem: int = 0) -> bytes:
+    return _words(0xF5000000 | (fmt << 21) | (size << 19) | tmem, tile << 24)
+
+
+def _settilesize(tile: int, width: int, height: int) -> bytes:
+    lrs = (width - 1) * 4
+    lrt = (height - 1) * 4
+    return _words(0xF2000000, (tile << 24) | (lrs << 12) | lrt)
 
 
 def _rgba16(red: int, green: int, blue: int, alpha: int = 255) -> bytes:
@@ -44,6 +62,32 @@ def _vertex(
         + v.to_bytes(2, "big", signed=True)
         + bytes(color)
     )
+
+
+def _png_rgba(data: bytes) -> tuple[tuple[int, int], bytes]:
+    width = height = 0
+    idat = bytearray()
+    cursor = 8
+    while cursor < len(data):
+        chunk_size = int.from_bytes(data[cursor : cursor + 4], "big")
+        chunk_type = data[cursor + 4 : cursor + 8]
+        chunk_data = data[cursor + 8 : cursor + 8 + chunk_size]
+        cursor += chunk_size + 12
+        if chunk_type == b"IHDR":
+            width = int.from_bytes(chunk_data[0:4], "big")
+            height = int.from_bytes(chunk_data[4:8], "big")
+        elif chunk_type == b"IDAT":
+            idat.extend(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+
+    rows = zlib.decompress(bytes(idat))
+    row_size = 1 + width * 4
+    pixels = bytearray()
+    for row in range(height):
+        row_start = row * row_size
+        pixels.extend(rows[row_start + 1 : row_start + row_size])
+    return (width, height), bytes(pixels)
 
 
 class TextureExportTest(unittest.TestCase):
@@ -110,7 +154,7 @@ class TextureExportTest(unittest.TestCase):
         self.assertEqual(len(export.images), 1)
         self.assertTrue(export.images[0].data.startswith(b"\x89PNG\r\n\x1a\n"))
 
-    def test_exporter_uses_texture_command_tile_for_mipmapped_textures(self):
+    def test_exporter_writes_mipmapped_texture_levels(self):
         texture_data = [
             SimpleNamespace(
                 raw_data=(
@@ -118,6 +162,7 @@ class TextureExportTest(unittest.TestCase):
                     + _rgba16(0, 255, 0)
                     + _rgba16(0, 0, 255)
                     + _rgba16(255, 255, 255)
+                    + _rgba16(255, 255, 0)
                 )
             )
         ]
@@ -128,14 +173,14 @@ class TextureExportTest(unittest.TestCase):
         )
         commands = b"".join(
             (
-                _words(0xD7000002, 0xFFFFFFFF),
+                _g_texture(level=1),
                 _words(0xFD100000, 0x00000000),
-                _words(0xF5100000, 0x07000000),
+                _settile(fmt=0, size=2, tile=7),
                 _words(0xF3000000, 0x07000000),
-                _words(0xF5100000, 0x00000000),
-                _words(0xF2000000, 0x00004004),
-                _words(0xF5100000, 0x01000000),
-                _words(0xF2000000, 0x01000000),
+                _settile(fmt=0, size=2, tile=0),
+                _settilesize(tile=0, width=2, height=2),
+                _settile(fmt=0, size=2, tile=1, tmem=1),
+                _settilesize(tile=1, width=1, height=1),
                 b"\x01\x00\x30\x06\x00\x00\x00\x00",
                 b"\x05\x00\x02\x04\x00\x00\x00\x00",
                 b"\xdf\x00\x00\x00\x00\x00\x00\x00",
@@ -152,9 +197,78 @@ class TextureExportTest(unittest.TestCase):
 
         self.assertIn("usemtl tex_0_pal_none_f0_s2_2x2", export.obj_data)
         self.assertIn("map_Kd textures/tex_0_pal_none_f0_s2_2x2.png", export.mtl_data)
+        self.assertIn(
+            "# mip1_map_Kd textures/tex_0_pal_none_f0_s2_2x2_mip1_1x1.png",
+            export.mtl_data,
+        )
         self.assertEqual(
-            export.images[0].filename,
-            "textures/tex_0_pal_none_f0_s2_2x2.png",
+            [image.filename for image in export.images],
+            [
+                "textures/tex_0_pal_none_f0_s2_2x2.png",
+                "textures/tex_0_pal_none_f0_s2_2x2_mip1_1x1.png",
+            ],
+        )
+        self.assertEqual(_png_rgba(export.images[0].data)[0], (2, 2))
+        self.assertEqual(
+            _png_rgba(export.images[1].data),
+            ((1, 1), bytes((255, 255, 0, 255))),
+        )
+
+    def test_exporter_writes_ci4_mipmapped_texture_levels_with_palette(self):
+        palette = b"".join(
+            (
+                _rgba16(0, 0, 0),
+                _rgba16(255, 0, 0),
+                _rgba16(0, 255, 0),
+                _rgba16(0, 0, 255),
+                _rgba16(255, 255, 255),
+            )
+        )
+        texture_data = [
+            SimpleNamespace(raw_data=b"\x01\x23" + (b"\x00" * 6) + b"\x40"),
+            SimpleNamespace(raw_data=palette),
+        ]
+        vertex_data = (
+            _vertex(0, 0, 0, 0, 0)
+            + _vertex(1, 0, 0, 32, 0)
+            + _vertex(0, 1, 0, 0, 32)
+        )
+        commands = b"".join(
+            (
+                _g_texture(level=1),
+                _words(0xFD400000, 0x00000000),
+                _settile(fmt=2, size=0, tile=7),
+                _words(0xF3000000, 0x07000000),
+                _settile(fmt=2, size=0, tile=0),
+                _settilesize(tile=0, width=2, height=2),
+                _settile(fmt=2, size=0, tile=1, tmem=1),
+                _settilesize(tile=1, width=1, height=1),
+                _words(0xFD100000, 0x00000001),
+                _words(0xF0000000, 0x0703C000),
+                b"\x01\x00\x30\x06\x00\x00\x00\x00",
+                b"\x05\x00\x02\x04\x00\x00\x00\x00",
+                b"\xdf\x00\x00\x00\x00\x00\x00\x00",
+            )
+        )
+        display_list = DisplayList(
+            raw_data=commands,
+            raw_vertex_data=vertex_data,
+            vertex_pointer=0,
+            offset=0,
+        )
+
+        export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
+
+        self.assertEqual(
+            [image.filename for image in export.images],
+            [
+                "textures/tex_0_pal_1_f2_s0_2x2.png",
+                "textures/tex_0_pal_1_f2_s0_2x2_mip1_1x1.png",
+            ],
+        )
+        self.assertEqual(
+            _png_rgba(export.images[1].data),
+            ((1, 1), bytes((255, 255, 255, 255))),
         )
 
     def test_save_textured_obj_export_writes_assets(self):
