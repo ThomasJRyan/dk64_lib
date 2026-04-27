@@ -12,9 +12,6 @@ from dk64_lib.components.vertex import Vertex
 from dk64_lib.f3dex2 import commands
 
 
-TMEM_WORD_BYTES = 8
-
-
 @dataclass(frozen=True, slots=True)
 class TextureImageFile:
     filename: str
@@ -45,16 +42,6 @@ class _TileDescriptor:
 
 
 @dataclass(frozen=True, slots=True)
-class _MipLevel:
-    level: int
-    fmt: int
-    size: int
-    width: int
-    height: int
-    data_offset: int
-
-
-@dataclass(frozen=True, slots=True)
 class _TextureKey:
     image_index: int
     palette_index: int | None
@@ -62,29 +49,18 @@ class _TextureKey:
     size: int
     width: int
     height: int
-    data_offset: int = 0
-    mip_levels: tuple[_MipLevel, ...] = tuple()
 
     @property
     def material_name(self) -> str:
         palette = "none" if self.palette_index is None else str(self.palette_index)
-        name = (
+        return (
             f"tex_{self.image_index}_pal_{palette}_"
             f"f{self.fmt}_s{self.size}_{self.width}x{self.height}"
         )
-        if self.data_offset:
-            name = f"{name}_off_{self.data_offset}"
-        return name
 
     @property
     def image_filename(self) -> str:
         return f"{self.material_name}.png"
-
-    def mip_image_filename(self, mip_level: _MipLevel) -> str:
-        return (
-            f"{self.material_name}_mip{mip_level.level}_"
-            f"{mip_level.width}x{mip_level.height}.png"
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +80,6 @@ class _TextureState:
         self._last_loaded_tile: int | None = None
         self._last_palette: _ImageSource | None = None
         self._active_tile: int | None = None
-        self._texture_level = 0
 
     def clone(self) -> "_TextureState":
         state = _TextureState()
@@ -115,7 +90,6 @@ class _TextureState:
         state._last_loaded_tile = self._last_loaded_tile
         state._last_palette = self._last_palette
         state._active_tile = self._active_tile
-        state._texture_level = self._texture_level
         return state
 
     def apply(self, command: commands.DL_Command) -> None:
@@ -155,12 +129,7 @@ class _TextureState:
             return
 
         if isinstance(command, commands.G_TEXTURE):
-            if command.on:
-                self._active_tile = command.tile
-                self._texture_level = command.level
-            else:
-                self._active_tile = None
-                self._texture_level = 0
+            self._active_tile = command.tile if command.on else None
 
     @property
     def active_texture(self) -> _TextureKey | None:
@@ -182,8 +151,6 @@ class _TextureState:
         if descriptor.fmt == 2 and self._last_palette is not None:
             palette_index = self._last_palette.index
 
-        mip_levels = tuple(self._mip_levels(self._active_tile))
-
         return _TextureKey(
             image_index=source.index,
             palette_index=palette_index,
@@ -191,28 +158,7 @@ class _TextureState:
             size=descriptor.size,
             width=dimensions[0],
             height=dimensions[1],
-            data_offset=descriptor.tmem * TMEM_WORD_BYTES,
-            mip_levels=mip_levels,
         )
-
-    def _mip_levels(self, base_tile: int) -> Iterable[_MipLevel]:
-        if self._texture_level <= 0:
-            return
-
-        for level in range(1, self._texture_level + 1):
-            tile = base_tile + level
-            descriptor = self._tile_descriptors.get(tile)
-            dimensions = self._tile_sizes.get(tile)
-            if descriptor is None or dimensions is None:
-                continue
-            yield _MipLevel(
-                level=level,
-                fmt=descriptor.fmt,
-                size=descriptor.size,
-                width=dimensions[0],
-                height=dimensions[1],
-                data_offset=descriptor.tmem * TMEM_WORD_BYTES,
-            )
 
 
 class TexturedObjExporter:
@@ -226,11 +172,17 @@ class TexturedObjExporter:
         texture_folder: str = "textures",
     ) -> TexturedObjExport:
         groups = tuple(self._iter_mesh_groups(display_lists))
-        textures = _unique_textures(group.texture for group in groups)
+        textures = tuple(
+            texture
+            for texture in dict.fromkeys(group.texture for group in groups)
+            if texture
+        )
         images = tuple(
-            image
+            TextureImageFile(
+                filename=f"{texture_folder}/{texture.image_filename}",
+                data=self._texture_png(texture),
+            )
             for texture in textures
-            for image in self._texture_images(texture, texture_folder)
         )
         return TexturedObjExport(
             obj_data=self._obj_data(groups, mtl_filename),
@@ -369,54 +321,12 @@ class TexturedObjExporter:
                     "d 1.000000",
                     "illum 1",
                     f"map_Kd {texture_folder}/{texture.image_filename}",
-                    *(
-                        f"# mip{level.level}_map_Kd "
-                        f"{texture_folder}/{texture.mip_image_filename(level)}"
-                        for level in texture.mip_levels
-                    ),
                     "",
                 )
             )
         return "\n".join(lines)
 
-    def _texture_images(
-        self,
-        texture: _TextureKey,
-        texture_folder: str,
-    ) -> Iterable[TextureImageFile]:
-        yield TextureImageFile(
-            filename=f"{texture_folder}/{texture.image_filename}",
-            data=self._texture_png(
-                texture,
-                fmt=texture.fmt,
-                size=texture.size,
-                width=texture.width,
-                height=texture.height,
-                data_offset=texture.data_offset,
-            ),
-        )
-        for mip_level in texture.mip_levels:
-            yield TextureImageFile(
-                filename=f"{texture_folder}/{texture.mip_image_filename(mip_level)}",
-                data=self._texture_png(
-                    texture,
-                    fmt=mip_level.fmt,
-                    size=mip_level.size,
-                    width=mip_level.width,
-                    height=mip_level.height,
-                    data_offset=mip_level.data_offset,
-                ),
-            )
-
-    def _texture_png(
-        self,
-        texture: _TextureKey,
-        fmt: int,
-        size: int,
-        width: int,
-        height: int,
-        data_offset: int = 0,
-    ) -> bytes:
+    def _texture_png(self, texture: _TextureKey) -> bytes:
         raw_texture = self._raw_texture(texture.image_index)
         raw_palette = (
             self._raw_texture(texture.palette_index)
@@ -424,31 +334,20 @@ class TexturedObjExporter:
             else None
         )
         rgba = decode_texture(
-            raw_texture[data_offset:] if raw_texture else raw_texture,
-            fmt=fmt,
-            size=size,
-            width=width,
-            height=height,
+            raw_texture,
+            fmt=texture.fmt,
+            size=texture.size,
+            width=texture.width,
+            height=texture.height,
             palette_data=raw_palette,
         )
-        return rgba_to_png(width, height, rgba)
+        return rgba_to_png(texture.width, texture.height, rgba)
 
     def _raw_texture(self, index: int | None) -> bytes | None:
         if index is None or index < 0 or index >= len(self._texture_data):
             return None
         texture = self._texture_data[index]
         return getattr(texture, "raw_data", None)
-
-
-def _unique_textures(textures: Iterable[_TextureKey | None]) -> tuple[_TextureKey, ...]:
-    by_material_name: dict[str, _TextureKey] = {}
-    for texture in textures:
-        if texture is None:
-            continue
-        existing = by_material_name.get(texture.material_name)
-        if existing is None or len(texture.mip_levels) > len(existing.mip_levels):
-            by_material_name[texture.material_name] = texture
-    return tuple(by_material_name.values())
 
 
 def decode_texture(

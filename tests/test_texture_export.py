@@ -177,7 +177,7 @@ class TextureExportTest(unittest.TestCase):
         self.assertEqual(len(export.images), 1)
         self.assertTrue(export.images[0].data.startswith(b"\x89PNG\r\n\x1a\n"))
 
-    def test_exporter_writes_mipmapped_texture_levels(self):
+    def test_exporter_uses_texture_command_tile_without_exporting_mip_levels(self):
         texture_data = [
             SimpleNamespace(
                 raw_data=(
@@ -220,24 +220,14 @@ class TextureExportTest(unittest.TestCase):
 
         self.assertIn("usemtl tex_0_pal_none_f0_s2_2x2", export.obj_data)
         self.assertIn("map_Kd textures/tex_0_pal_none_f0_s2_2x2.png", export.mtl_data)
-        self.assertIn(
-            "# mip1_map_Kd textures/tex_0_pal_none_f0_s2_2x2_mip1_1x1.png",
-            export.mtl_data,
-        )
+        self.assertNotIn("mip", export.mtl_data)
         self.assertEqual(
             [image.filename for image in export.images],
-            [
-                "textures/tex_0_pal_none_f0_s2_2x2.png",
-                "textures/tex_0_pal_none_f0_s2_2x2_mip1_1x1.png",
-            ],
+            ["textures/tex_0_pal_none_f0_s2_2x2.png"],
         )
         self.assertEqual(_png_rgba(export.images[0].data)[0], (2, 2))
-        self.assertEqual(
-            _png_rgba(export.images[1].data),
-            ((1, 1), bytes((255, 255, 0, 255))),
-        )
 
-    def test_exporter_writes_ci4_mipmapped_texture_levels_with_palette(self):
+    def test_exporter_writes_full_ci4_texture_without_mip_levels(self):
         palette = b"".join(
             (
                 _rgba16(0, 0, 0),
@@ -284,15 +274,10 @@ class TextureExportTest(unittest.TestCase):
 
         self.assertEqual(
             [image.filename for image in export.images],
-            [
-                "textures/tex_0_pal_1_f2_s0_2x2.png",
-                "textures/tex_0_pal_1_f2_s0_2x2_mip1_1x1.png",
-            ],
+            ["textures/tex_0_pal_1_f2_s0_2x2.png"],
         )
-        self.assertEqual(
-            _png_rgba(export.images[1].data),
-            ((1, 1), bytes((255, 255, 255, 255))),
-        )
+        self.assertNotIn("mip", export.mtl_data)
+        self.assertEqual(_png_rgba(export.images[0].data)[0], (2, 2))
 
     def test_test_mipmap_export_stitches_rows_for_rgba_texture_defaults(self):
         texture_data = [
