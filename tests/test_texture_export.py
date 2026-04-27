@@ -373,6 +373,19 @@ class TextureExportTest(unittest.TestCase):
             )
             self.assertEqual(_png_rgba(filepaths[0].read_bytes())[0], (4, 8))
             self.assertEqual(
+                _png_rgba(filepaths[1].read_bytes())[1][: 8 * 4],
+                _indexed_rgba(
+                    1,
+                    2,
+                    3,
+                    4,
+                    2,
+                    1,
+                    4,
+                    3,
+                ),
+            )
+            self.assertEqual(
                 _png_rgba(filepaths[2].read_bytes()),
                 (
                     (4, 4),

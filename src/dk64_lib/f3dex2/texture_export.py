@@ -500,10 +500,17 @@ def _test_mipmap_export_for_texture(
         height=height,
         palette_data=raw_palette,
     )
+    texture_rgba = source_rgba
+    if (texture_index, palette_index, fmt, size) == (2, None, 0, 2):
+        texture_rgba = _swap_odd_rows_rgba(
+            source_rgba,
+            source_width=width,
+            group_pixels=4,
+        )
 
     outputs = (
         ("base", base_width, base_height, base_rgba),
-        (None, width, height, source_rgba),
+        (None, width, height, texture_rgba),
         (
             1,
             width,
