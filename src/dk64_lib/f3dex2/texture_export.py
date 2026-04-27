@@ -540,14 +540,15 @@ def test_mipmap_export(
 
     mip_width = width
     mip_height = max(1, height // 2)
-    rgba = decode_texture(
+    source_rgba = decode_texture(
         raw_texture,
         fmt=fmt,
         size=size,
-        width=mip_width,
-        height=mip_height,
+        width=width,
+        height=height,
         palette_data=raw_palette,
     )
+    rgba = _every_other_row_rgba(source_rgba, width, mip_height)
 
     palette_name = "none" if palette_index is None else str(palette_index)
     filename = (
@@ -573,6 +574,15 @@ def _raw_texture_data(texture_data: tuple[object, ...], index: int | None) -> by
     if index is None or index < 0 or index >= len(texture_data):
         return None
     return getattr(texture_data[index], "raw_data", None)
+
+
+def _every_other_row_rgba(source_rgba: bytes, width: int, mip_height: int) -> bytes:
+    row_size = width * 4
+    mip_rgba = bytearray()
+    for mip_row in range(mip_height):
+        source_row_start = mip_row * 2 * row_size
+        mip_rgba.extend(source_rgba[source_row_start : source_row_start + row_size])
+    return bytes(mip_rgba)
 
 
 def _vertices_for_command(display_list: object, command: commands.G_VTX) -> list[Vertex]:

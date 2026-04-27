@@ -272,7 +272,7 @@ class TextureExportTest(unittest.TestCase):
             ((1, 1), bytes((255, 255, 255, 255))),
         )
 
-    def test_test_mipmap_export_writes_first_vertical_half_candidate(self):
+    def test_test_mipmap_export_stitches_every_other_source_row(self):
         palette = b"".join(
             (
                 _rgba16(0, 0, 0),
@@ -283,7 +283,7 @@ class TextureExportTest(unittest.TestCase):
             )
         )
         texture_data = [
-            SimpleNamespace(raw_data=b"\x12\x34\x00\x00"),
+            SimpleNamespace(raw_data=b"\x12\x34\x21\x43"),
             SimpleNamespace(raw_data=palette),
         ]
 
@@ -314,12 +314,12 @@ class TextureExportTest(unittest.TestCase):
                             0,
                             255,
                             0,
+                            255,
                             0,
                             255,
                             255,
-                            255,
-                            255,
-                            255,
+                            0,
+                            0,
                             255,
                         )
                     ),
