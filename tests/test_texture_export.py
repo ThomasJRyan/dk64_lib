@@ -302,7 +302,11 @@ class TextureExportTest(unittest.TestCase):
             ci4_pixels.extend(tuple(range(8)))
             ci4_pixels.extend([0] * 16)
             ci4_pixels.extend(tuple(range(8)))
-        ci4_pixels.extend([3] * (4 * 8))
+        for row_pair in range(4):
+            ci4_pixels.extend(tuple(range(4)))
+            ci4_pixels.extend([0] * 20)
+            ci4_pixels.extend(tuple(range(4)))
+            ci4_pixels.extend([0] * 4)
         ci4_pixels.extend([0] * (2944 - len(ci4_pixels)))
         texture_data = [
             SimpleNamespace(raw_data=_ci4_indices(*ci4_pixels)),
@@ -406,7 +410,8 @@ class TextureExportTest(unittest.TestCase):
             self.assertEqual(tex0_mip1_size, (16, 32))
             tex0_mip2_size, tex0_mip2_pixels = _png_rgba(filepaths[7].read_bytes())
             self.assertEqual(tex0_mip2_size, (8, 16))
-            self.assertEqual(_png_rgba(filepaths[8].read_bytes())[0], (4, 8))
+            tex0_mip3_size, tex0_mip3_pixels = _png_rgba(filepaths[8].read_bytes())
+            self.assertEqual(tex0_mip3_size, (4, 8))
             expected_row0 = decode_texture(
                 _ci4_indices(*(tuple(range(16)) * 2)),
                 fmt=2,
@@ -473,6 +478,19 @@ class TextureExportTest(unittest.TestCase):
             self.assertEqual(
                 tex0_mip2_pixels[8 * 4 : 16 * 4],
                 expected_mip2_row1,
+            )
+            expected_mip3_row = decode_texture(
+                _ci4_indices(*tuple(range(4))),
+                fmt=2,
+                size=0,
+                width=4,
+                height=1,
+                palette_data=palette,
+            )
+            self.assertEqual(tex0_mip3_pixels[: 4 * 4], expected_mip3_row)
+            self.assertEqual(
+                tex0_mip3_pixels[4 * 4 : 8 * 4],
+                expected_mip3_row,
             )
 
     def test_save_textured_obj_export_writes_assets(self):

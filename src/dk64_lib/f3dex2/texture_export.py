@@ -589,14 +589,15 @@ def _test_packed_mipmap_export_for_texture(
     outputs = [("base", base_width, base_height, base_rgba)]
 
     for level, output_width, output_height, start_pixel in mip_specs:
-        if level == 2:
+        if level in (2, 3):
+            skipped_pixels = width // 2 if level == 2 else width - (output_width * 3)
             rgba = _slice_sparse_paired_rows_rgba(
                 base_rgba,
                 start_pixel=start_pixel,
                 output_width=output_width,
                 output_height=output_height,
                 source_group_pixels=width,
-                skipped_pixels=width // 2,
+                skipped_pixels=skipped_pixels,
             )
         else:
             rgba = _slice_flat_rgba(base_rgba, start_pixel, output_width, output_height)
