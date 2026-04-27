@@ -523,6 +523,58 @@ def save_textured_obj_export(
     return written_paths
 
 
+def test_mipmap_export(
+    texture_source: object,
+    folderpath: str | pathlib.Path = "mipmap_test",
+    texture_index: int = 0,
+    palette_index: int | None = 1,
+    fmt: int = 2,
+    size: int = 0,
+    width: int = 32,
+    height: int = 64,
+) -> pathlib.Path:
+    """Export the first DK64 packed mipmap region for quick visual iteration."""
+    texture_data = _geometry_texture_table(texture_source)
+    raw_texture = _raw_texture_data(texture_data, texture_index)
+    raw_palette = _raw_texture_data(texture_data, palette_index)
+
+    mip_width = width
+    mip_height = max(1, height // 2)
+    rgba = decode_texture(
+        raw_texture,
+        fmt=fmt,
+        size=size,
+        width=mip_width,
+        height=mip_height,
+        palette_data=raw_palette,
+    )
+
+    palette_name = "none" if palette_index is None else str(palette_index)
+    filename = (
+        f"tex_{texture_index}_pal_{palette_name}_f{fmt}_s{size}_"
+        f"{width}x{height}_mip1_{mip_width}x{mip_height}.png"
+    )
+    filepath = pathlib.Path(folderpath) / filename
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    filepath.write_bytes(rgba_to_png(mip_width, mip_height, rgba))
+    return filepath
+
+
+test_mipmap_export.__test__ = False
+
+
+def _geometry_texture_table(texture_source: object) -> tuple[object, ...]:
+    if hasattr(texture_source, "get_geometry_texture_data"):
+        return tuple(texture_source.get_geometry_texture_data())
+    return tuple(texture_source)
+
+
+def _raw_texture_data(texture_data: tuple[object, ...], index: int | None) -> bytes | None:
+    if index is None or index < 0 or index >= len(texture_data):
+        return None
+    return getattr(texture_data[index], "raw_data", None)
+
+
 def _vertices_for_command(display_list: object, command: commands.G_VTX) -> list[Vertex]:
     vertex_address = int.from_bytes(command.address, "big")
     vertex_buffer_start = display_list.vertex_pointer + vertex_address

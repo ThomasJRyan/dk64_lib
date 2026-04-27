@@ -11,6 +11,7 @@ from dk64_lib.f3dex2.texture_export import (
     decode_texture,
     rgba_to_png,
     save_textured_obj_export,
+    test_mipmap_export as export_test_mipmap,
 )
 
 
@@ -270,6 +271,60 @@ class TextureExportTest(unittest.TestCase):
             _png_rgba(export.images[1].data),
             ((1, 1), bytes((255, 255, 255, 255))),
         )
+
+    def test_test_mipmap_export_writes_first_vertical_half_candidate(self):
+        palette = b"".join(
+            (
+                _rgba16(0, 0, 0),
+                _rgba16(255, 0, 0),
+                _rgba16(0, 255, 0),
+                _rgba16(0, 0, 255),
+                _rgba16(255, 255, 255),
+            )
+        )
+        texture_data = [
+            SimpleNamespace(raw_data=b"\x12\x34\x00\x00"),
+            SimpleNamespace(raw_data=palette),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = export_test_mipmap(
+                texture_data,
+                folderpath=tmpdir,
+                width=2,
+                height=4,
+            )
+
+            self.assertEqual(
+                filepath.name,
+                "tex_0_pal_1_f2_s0_2x4_mip1_2x2.png",
+            )
+            self.assertEqual(
+                _png_rgba(filepath.read_bytes()),
+                (
+                    (2, 2),
+                    bytes(
+                        (
+                            255,
+                            0,
+                            0,
+                            255,
+                            0,
+                            255,
+                            0,
+                            255,
+                            0,
+                            0,
+                            255,
+                            255,
+                            255,
+                            255,
+                            255,
+                            255,
+                        )
+                    ),
+                ),
+            )
 
     def test_save_textured_obj_export_writes_assets(self):
         texture_data = [SimpleNamespace(raw_data=_rgba16(255, 0, 0))]
