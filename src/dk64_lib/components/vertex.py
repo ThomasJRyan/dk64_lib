@@ -34,3 +34,15 @@ class Vertex:
 
     def __repr__(self):
         return f"{self.__class__.__qualname__}({self.x}, {self.y}, {self.z})"
+
+    def to_obj_line(self, include_color: bool = True) -> str:
+        """Format this vertex as an OBJ vertex line."""
+        position = f"v {self.x} {self.y} {self.z}"
+        if not include_color:
+            return position
+        return (
+            f"{position} "
+            f"{self.xr / 255:.6f} "
+            f"{self.yg / 255:.6f} "
+            f"{self.zb / 255:.6f}"
+        )

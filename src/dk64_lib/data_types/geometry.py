@@ -151,7 +151,7 @@ class GeometryData(BaseData):
 
                 # Write vertecies to file
                 for vertex in verticies:
-                    obj_line = f"v {vertex.x} {vertex.y} {vertex.z}\n"
+                    obj_line = f"{vertex.to_obj_line()}\n"
                     obj_data += obj_line
                 obj_data += "\n"
 

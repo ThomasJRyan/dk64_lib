@@ -1,5 +1,4 @@
 import os
-import re
 import glob
 import unittest
 
@@ -23,13 +22,25 @@ def get_obj_file_str(obj_name: str) -> str:
         return fil.read()
 
 
+def geometry_only_obj(obj_data: str) -> str:
+    lines = list()
+    for line in obj_data.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if parts[0] == "v":
+            lines.append(" ".join(parts[:4]))
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
 class ObjTest(unittest.TestCase):
     def setUp(self):
         self.rom = get_rom()
 
     def test_map_objs(self):
-        COMMENT_PATTERN = re.compile(r"#.*\n")
-        NEW_LINE_PATTERN = re.compile(r"[^0-9]\n")
         for map_num, geometry_table in enumerate(self.rom.geometry_tables):
             with self.subTest(f"{map_num}.obj, {MAPS[map_num]}"):
                 try:
@@ -39,13 +50,16 @@ class ObjTest(unittest.TestCase):
 
                 created_obj = geometry_table.create_obj()
 
-                cleaned_obj_data = NEW_LINE_PATTERN.sub(
-                    "", COMMENT_PATTERN.sub("", obj_data)
+                self.assertEqual(
+                    geometry_only_obj(created_obj),
+                    geometry_only_obj(obj_data),
                 )
-                cleaned_created_obj = NEW_LINE_PATTERN.sub(
-                    "", COMMENT_PATTERN.sub("", created_obj)
-                )
-                self.assertEqual(cleaned_created_obj, cleaned_obj_data)
+
+    def test_create_obj_includes_vertex_colors(self):
+        obj_data = self.rom.geometry_tables[0].create_obj()
+
+        self.assertIn("v 20 20 20 0.000000 0.000000 0.000000", obj_data)
+
 
 class DisplayListTest(unittest.TestCase):
     def setUp(self):

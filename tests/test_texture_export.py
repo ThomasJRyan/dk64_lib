@@ -27,7 +27,14 @@ def _rgba16(red: int, green: int, blue: int, alpha: int = 255) -> bytes:
     return raw.to_bytes(2, "big")
 
 
-def _vertex(x: int, y: int, z: int, u: int, v: int) -> bytes:
+def _vertex(
+    x: int,
+    y: int,
+    z: int,
+    u: int,
+    v: int,
+    color: tuple[int, int, int, int] = (255, 255, 255, 255),
+) -> bytes:
     return (
         x.to_bytes(2, "big", signed=True)
         + y.to_bytes(2, "big", signed=True)
@@ -35,7 +42,7 @@ def _vertex(x: int, y: int, z: int, u: int, v: int) -> bytes:
         + b"\x00\x00"
         + u.to_bytes(2, "big", signed=True)
         + v.to_bytes(2, "big", signed=True)
-        + bytes((255, 255, 255, 255))
+        + bytes(color)
     )
 
 
@@ -70,7 +77,7 @@ class TextureExportTest(unittest.TestCase):
             )
         ]
         vertex_data = (
-            _vertex(0, 0, 0, 0, 0)
+            _vertex(0, 0, 0, 0, 0, color=(255, 0, 128, 255))
             + _vertex(1, 0, 0, 64, 0)
             + _vertex(0, 1, 0, 0, 64)
         )
@@ -95,6 +102,7 @@ class TextureExportTest(unittest.TestCase):
         export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
 
         self.assertIn("mtllib model.mtl", export.obj_data)
+        self.assertIn("v 0 0 0 1.000000 0.000000 0.501961", export.obj_data)
         self.assertIn("vt 0.00000000 1.00000000", export.obj_data)
         self.assertIn("usemtl tex_0_pal_none_f0_s2_2x2", export.obj_data)
         self.assertIn("f 1/1 2/2 3/3", export.obj_data)

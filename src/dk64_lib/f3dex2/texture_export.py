@@ -278,7 +278,7 @@ class TexturedObjExporter:
                 f"Display List Offset: {group.display_list_offset}"
             )
             for vertex in group.vertices:
-                lines.append(f"v {vertex.x} {vertex.y} {vertex.z}")
+                lines.append(vertex.to_obj_line())
 
             if group.texture is not None:
                 for vertex in group.vertices:

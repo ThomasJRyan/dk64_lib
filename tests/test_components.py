@@ -29,6 +29,26 @@ class VertexTest(unittest.TestCase):
         self.assertEqual(vertex.zb, 0x50)
         self.assertEqual(vertex.alpha, 0x60)
 
+    def test_to_obj_line_includes_normalized_vertex_color(self):
+        vertex = Vertex(
+            -2,
+            0x0102,
+            -32768,
+            0x1234,
+            0x10,
+            0x20,
+            0x30,
+            0x40,
+            0x50,
+            0x60,
+        )
+
+        self.assertEqual(
+            vertex.to_obj_line(),
+            "v -2 258 -32768 0.188235 0.250980 0.313725",
+        )
+        self.assertEqual(vertex.to_obj_line(include_color=False), "v -2 258 -32768")
+
     def test_is_frozen(self):
         vertex = Vertex.from_bytes(bytes(16))
 
