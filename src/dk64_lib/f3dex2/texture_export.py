@@ -560,28 +560,47 @@ def _test_packed_mipmap_export_for_texture(
     base_height: int,
     base_rgba: bytes,
 ) -> list[pathlib.Path]:
+    level0_width, level0_height = width, height
+    level1_width, level1_height = max(1, width // 2), max(1, height // 2)
+    level2_width, level2_height = max(1, width // 4), max(1, height // 4)
+    level3_width, level3_height = max(1, width // 8), max(1, height // 8)
+    level0_pixels = level0_width * level0_height
+    level1_pixels = level1_width * level1_height
+    level2_storage_pixels = width * math.ceil(level2_height / 2)
+    level2_start_pixel = level0_pixels + level1_pixels
+    level3_start_pixel = level2_start_pixel + level2_storage_pixels
+
     mip_specs = (
-        (None, width, height, 0),
-        (1, max(1, width // 2), max(1, height // 2), width * height),
+        (None, level0_width, level0_height, 0),
+        (1, level1_width, level1_height, level0_pixels),
         (
             2,
-            max(1, width // 4),
-            max(1, height // 4),
-            width * height + ((width // 2) * (height // 2)),
+            level2_width,
+            level2_height,
+            level2_start_pixel,
         ),
         (
             3,
-            max(1, width // 8),
-            max(1, height // 8),
-            width * height
-            + ((width // 2) * (height // 2))
-            + ((width // 4) * (height // 4)),
+            level3_width,
+            level3_height,
+            level3_start_pixel,
         ),
     )
     outputs = [("base", base_width, base_height, base_rgba)]
 
     for level, output_width, output_height, start_pixel in mip_specs:
-        rgba = _slice_flat_rgba(base_rgba, start_pixel, output_width, output_height)
+        if level == 2:
+            rgba = _slice_sparse_paired_rows_rgba(
+                base_rgba,
+                start_pixel=start_pixel,
+                output_width=output_width,
+                output_height=output_height,
+                source_group_pixels=width,
+                skipped_pixels=width // 2,
+                swap_second_row_group_pixels=output_width,
+            )
+        else:
+            rgba = _slice_flat_rgba(base_rgba, start_pixel, output_width, output_height)
         if level in (None, 1):
             rgba = _swap_odd_rows_rgba(
                 rgba,
@@ -699,6 +718,40 @@ def _slice_flat_rgba(
     start = start_pixel * 4
     expected = width * height * 4
     return (source_rgba[start : start + expected] + b"\x00" * expected)[:expected]
+
+
+def _slice_sparse_paired_rows_rgba(
+    source_rgba: bytes,
+    start_pixel: int,
+    output_width: int,
+    output_height: int,
+    source_group_pixels: int,
+    skipped_pixels: int,
+    swap_second_row_group_pixels: int,
+) -> bytes:
+    output_row_size = output_width * 4
+    source_group_size = source_group_pixels * 4
+    skipped_size = skipped_pixels * 4
+    source_start = start_pixel * 4
+    paired = bytearray()
+
+    for row_pair in range(math.ceil(output_height / 2)):
+        group_start = source_start + (row_pair * source_group_size)
+        first_row = source_rgba[group_start : group_start + output_row_size]
+        second_row_start = group_start + output_row_size + skipped_size
+        second_row = source_rgba[
+            second_row_start : second_row_start + output_row_size
+        ]
+        paired.extend((first_row + b"\x00" * output_row_size)[:output_row_size])
+        if (row_pair * 2) + 1 < output_height:
+            second_row = _swap_pixel_group_halves_rgba(
+                (second_row + b"\x00" * output_row_size)[:output_row_size],
+                swap_second_row_group_pixels,
+            )
+            paired.extend(second_row)
+
+    expected = output_width * output_height * 4
+    return bytes(paired[:expected])
 
 
 def _stitch_rows_rgba(
