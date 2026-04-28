@@ -6,3 +6,6 @@ __pycache__/
 *.z64
 *.v64
 .codex
+output/
+textures/
+docs_out/
