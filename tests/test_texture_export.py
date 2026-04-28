@@ -435,6 +435,43 @@ class TextureExportTest(unittest.TestCase):
         self.assertEqual(_png_rgba(export.images[2].data)[0], (8, 16))
         self.assertEqual(_png_rgba(export.images[3].data)[0], (4, 8))
 
+    def test_exporter_writes_packed_ci4_64x32_mipmap_levels(self):
+        palette = b"".join(_rgba16(value, value, value) for value in range(0, 256, 17))
+        ci4_pixels = tuple(range(16)) * 172
+        texture_data = [SimpleNamespace(raw_data=b"") for index in range(210)]
+        texture_data[208] = SimpleNamespace(raw_data=_ci4_indices(*ci4_pixels))
+        texture_data[209] = SimpleNamespace(raw_data=palette)
+        display_list = _textured_triangle_display_list(
+            texture_index=208,
+            fmt=2,
+            size=0,
+            width=64,
+            height=32,
+            palette_index=209,
+        )
+
+        export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
+
+        self.assertIn("usemtl tex_208_pal_209_f2_s0_64x32", export.obj_data)
+        self.assertIn(
+            "map_Kd textures/tex_208_pal_209_f2_s0_64x32.png",
+            export.mtl_data,
+        )
+        self.assertEqual(
+            [image.filename for image in export.images],
+            [
+                "textures/tex_208_pal_209_f2_s0_64x32.png",
+                "textures/tex_208_pal_209_f2_s0_64x32_mip1_32x16.png",
+                "textures/tex_208_pal_209_f2_s0_64x32_mip2_16x8.png",
+                "textures/tex_208_pal_209_f2_s0_64x32_mip3_8x4.png",
+            ],
+        )
+        self.assertFalse(any("_base_" in image.filename for image in export.images))
+        self.assertEqual(_png_rgba(export.images[0].data)[0], (64, 32))
+        self.assertEqual(_png_rgba(export.images[1].data)[0], (32, 16))
+        self.assertEqual(_png_rgba(export.images[2].data)[0], (16, 8))
+        self.assertEqual(_png_rgba(export.images[3].data)[0], (8, 4))
+
     def test_test_mipmap_export_stitches_rows_for_test_textures(self):
         palette = b"".join(
             _rgba16(value, value, value)
