@@ -733,9 +733,9 @@ def _standard_mipmap_levels(
     level3_width, level3_height = max(1, width // 8), max(1, height // 8)
     level0_pixels = level0_width * level0_height
     level1_pixels = level1_width * level1_height
-    level2_pixels = level2_width * level2_height
+    level2_storage_pixels = width * math.ceil(level2_height / 2)
     level2_start_pixel = level0_pixels + level1_pixels
-    level3_start_pixel = level2_start_pixel + level2_pixels
+    level3_start_pixel = level2_start_pixel + level2_storage_pixels
 
     return (
         _DecodedTextureLevel(
@@ -758,13 +758,27 @@ def _standard_mipmap_levels(
             2,
             level2_width,
             level2_height,
-            _slice_flat_rgba(base_rgba, level2_start_pixel, level2_width, level2_height),
+            _slice_sparse_paired_rows_rgba(
+                base_rgba,
+                start_pixel=level2_start_pixel,
+                output_width=level2_width,
+                output_height=level2_height,
+                source_group_pixels=width,
+                skipped_pixels=width - (level2_width * 2),
+            ),
         ),
         _DecodedTextureLevel(
             3,
             level3_width,
             level3_height,
-            _slice_flat_rgba(base_rgba, level3_start_pixel, level3_width, level3_height),
+            _slice_sparse_paired_rows_rgba(
+                base_rgba,
+                start_pixel=level3_start_pixel,
+                output_width=level3_width,
+                output_height=level3_height,
+                source_group_pixels=width,
+                skipped_pixels=width - (level3_width * 3),
+            ),
         ),
     )
 
@@ -852,11 +866,13 @@ def _packed_ci4_mipmap_storage_pixels(width: int, height: int) -> int:
 
 
 def _standard_mipmap_storage_pixels(width: int, height: int) -> int:
+    level2_height = max(1, height // 4)
+    level3_height = max(1, height // 8)
     return (
         (width * height)
         + (max(1, width // 2) * max(1, height // 2))
-        + (max(1, width // 4) * max(1, height // 4))
-        + (max(1, width // 8) * max(1, height // 8))
+        + (width * math.ceil(level2_height / 2))
+        + (width * math.ceil(level3_height / 2))
     )
 
 
