@@ -592,6 +592,9 @@ def _decode_standard_indexed_mipmap_levels(
         level0_swap_group_pixels=_standard_indexed_level0_swap_group_pixels(
             texture.size
         ),
+        level1_swap_group_pixels=_standard_indexed_level1_swap_group_pixels(
+            texture.size
+        ),
     )
 
 
@@ -734,6 +737,7 @@ def _standard_mipmap_levels(
     height: int,
     base_rgba: bytes,
     level0_swap_group_pixels: int = 16,
+    level1_swap_group_pixels: int | None = None,
 ) -> tuple[_DecodedTextureLevel, ...]:
     level0_width, level0_height = width, height
     level1_width, level1_height = max(1, width // 2), max(1, height // 2)
@@ -760,7 +764,13 @@ def _standard_mipmap_levels(
             1,
             level1_width,
             level1_height,
-            _slice_flat_rgba(base_rgba, level0_pixels, level1_width, level1_height),
+            _standard_level1_rgba(
+                base_rgba,
+                start_pixel=level0_pixels,
+                width=level1_width,
+                height=level1_height,
+                swap_group_pixels=level1_swap_group_pixels,
+            ),
         ),
         _DecodedTextureLevel(
             2,
@@ -793,6 +803,27 @@ def _standard_mipmap_levels(
 
 def _standard_indexed_level0_swap_group_pixels(size: int) -> int:
     return 8 if size == 1 else 16
+
+
+def _standard_indexed_level1_swap_group_pixels(size: int) -> int | None:
+    return 8 if size == 1 else None
+
+
+def _standard_level1_rgba(
+    base_rgba: bytes,
+    start_pixel: int,
+    width: int,
+    height: int,
+    swap_group_pixels: int | None,
+) -> bytes:
+    rgba = _slice_flat_rgba(base_rgba, start_pixel, width, height)
+    if swap_group_pixels is None:
+        return rgba
+    return _swap_odd_rows_rgba(
+        rgba,
+        source_width=width,
+        group_pixels=swap_group_pixels,
+    )
 
 
 def _packed_rgba_mipmap_levels(
@@ -1149,6 +1180,7 @@ def _test_standard_mipmap_export_for_texture(
             height,
             base_rgba,
             level0_swap_group_pixels=_standard_indexed_level0_swap_group_pixels(size),
+            level1_swap_group_pixels=_standard_indexed_level1_swap_group_pixels(size),
         )
     )
     return _write_test_mipmap_outputs(

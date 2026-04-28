@@ -524,7 +524,24 @@ class TextureExportTest(unittest.TestCase):
             palette_data=palette,
         )
         self.assertEqual(level0_pixels[32 * 4 : 64 * 4], expected_swapped_row)
-        self.assertEqual(_png_rgba(export.images[1].data)[0], (16, 16))
+        mip1_size, mip1_pixels = _png_rgba(export.images[1].data)
+        self.assertEqual(mip1_size, (16, 16))
+        self.assertEqual(
+            mip1_pixels[16 * 4 : 32 * 4],
+            decode_texture(
+                bytes(
+                    tuple(range(4, 8))
+                    + tuple(range(4))
+                    + tuple(range(12, 16))
+                    + tuple(range(8, 12))
+                ),
+                fmt=2,
+                size=1,
+                width=16,
+                height=1,
+                palette_data=palette,
+            ),
+        )
         mip2_size, mip2_pixels = _png_rgba(export.images[2].data)
         self.assertEqual(mip2_size, (8, 8))
         self.assertEqual(
