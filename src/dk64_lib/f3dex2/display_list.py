@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from tempfile import TemporaryFile
 
-from dk64_lib.components.vertex import Vertex
-from dk64_lib.components.triangle import Triangle
+from dk64_lib.f3dex2.vertex import Vertex
+from dk64_lib.f3dex2.triangle import Triangle
 
 from dk64_lib.binary_reader import BinaryReader
 from dk64_lib.f3dex2 import commands

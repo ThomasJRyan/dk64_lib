@@ -14,7 +14,7 @@ The relevant implementation lives primarily in:
 * ``dk64_lib.f3dex2.texture_export.TexturedDaeExporter``
 * ``dk64_lib.f3dex2.texture_export.decode_texture``
 * ``dk64_lib.f3dex2.commands``
-* ``dk64_lib.components.vertex.Vertex``
+* ``dk64_lib.f3dex2.vertex.Vertex``
 
 High-Level Export Flow
 ----------------------

@@ -13,9 +13,9 @@ from collada import geometry as collada_geometry
 from collada import material as collada_material
 from collada import scene, source
 from collada.common import E, tag
-from dk64_lib.components.triangle import Triangle
-from dk64_lib.components.vertex import Vertex
 from dk64_lib.f3dex2 import commands
+from dk64_lib.f3dex2.triangle import Triangle
+from dk64_lib.f3dex2.vertex import Vertex
 from numpy import array as numpy_array
 
 

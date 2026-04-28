@@ -1,8 +1,8 @@
 import unittest
 from dataclasses import FrozenInstanceError
 
-from dk64_lib.components.triangle import Triangle
-from dk64_lib.components.vertex import Vertex
+from dk64_lib.f3dex2.triangle import Triangle
+from dk64_lib.f3dex2.vertex import Vertex
 from dk64_lib.f3dex2.commands import G_TRI1, G_TRI2
 
 

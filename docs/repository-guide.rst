@@ -37,10 +37,8 @@ Library Modules
 
 ``dk64_lib.f3dex2``
     F3DEX2 display-list command parsing plus textured OBJ, glTF/GLB, and DAE
-    export helpers.
-
-``dk64_lib.components``
-    Small geometry value objects such as vertices and triangles.
+    export helpers, including geometry value objects such as vertices and
+    triangles.
 
 ``dk64_lib.constants``
     Generated or maintained lookup tables for map names and sprite names.
