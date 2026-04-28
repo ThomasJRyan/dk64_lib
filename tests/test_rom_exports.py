@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from dk64_lib.data_types.geometry import GeometryData
+from dk64_lib.f3dex2.display_list import DisplayList
 from dk64_lib.rom import Rom
 
 
@@ -13,6 +14,57 @@ def _fake_rom() -> Rom:
     rom = Rom.__new__(Rom)
     rom.rom_fh = SimpleNamespace(close=lambda: None)
     return rom
+
+
+def _words(word0: int, word1: int) -> bytes:
+    return word0.to_bytes(4, "big") + word1.to_bytes(4, "big")
+
+
+def _rgba16(red: int, green: int, blue: int, alpha: int = 255) -> bytes:
+    raw = (
+        ((red * 31 // 255) << 11)
+        | ((green * 31 // 255) << 6)
+        | ((blue * 31 // 255) << 1)
+        | (1 if alpha else 0)
+    )
+    return raw.to_bytes(2, "big")
+
+
+def _vertex(x: int, y: int, z: int, u: int, v: int) -> bytes:
+    return (
+        x.to_bytes(2, "big", signed=True)
+        + y.to_bytes(2, "big", signed=True)
+        + z.to_bytes(2, "big", signed=True)
+        + b"\x00\x00"
+        + u.to_bytes(2, "big", signed=True)
+        + v.to_bytes(2, "big", signed=True)
+        + b"\xff\xff\xff\xff"
+    )
+
+
+def _textured_triangle_display_list() -> DisplayList:
+    return DisplayList(
+        raw_data=b"".join(
+            (
+                _words(0xD7001802, 0xFFFFFFFF),
+                _words(0xFD100000, 0x00000000),
+                _words(0xF5100000, 0x07000000),
+                _words(0xF3000000, 0x07000000),
+                _words(0xF5100000, 0x00000000),
+                _words(0xF2000000, 0x00004004),
+                b"\x01\x00\x30\x06\x00\x00\x00\x00",
+                b"\x05\x00\x02\x04\x00\x00\x00\x00",
+                b"\xdf\x00\x00\x00\x00\x00\x00\x00",
+            )
+        ),
+        raw_vertex_data=(
+            _vertex(0, 0, 0, 0, 0)
+            + _vertex(1, 0, 0, 64, 0)
+            + _vertex(0, 1, 0, 0, 64)
+        ),
+        vertex_pointer=0,
+        offset=0,
+    )
 
 
 class _FakeGeometry:
@@ -316,7 +368,40 @@ class RomExportTest(unittest.TestCase):
             self.assertEqual(paths, [cutscene_path])
             self.assertEqual(cutscene_path.read_bytes(), b"cutscene")
 
-    def test_export_textures_and_assets_write_raw_table_entries(self):
+    def test_export_textures_writes_geometry_pngs(self):
+        rom = _fake_rom()
+        rom.geometry_tables = [
+            SimpleNamespace(
+                is_pointer=False,
+                display_lists=[_textured_triangle_display_list()],
+            )
+        ]
+        rom.get_geometry_texture_data = lambda: [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            texture_paths = Rom.export_textures(rom, root / "textures")
+            texture_path = (
+                root
+                / "textures"
+                / "table_25"
+                / "tex_0_pal_none_f0_s2_2x2.png"
+            )
+
+            self.assertEqual(texture_paths, [texture_path])
+            self.assertTrue(texture_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertEqual(list((root / "textures").rglob("*.bin")), [])
+
+    def test_export_assets_write_raw_table_entries(self):
         rom = _fake_rom()
 
         def generate_rom_table_data(tables: list[int]):
@@ -327,17 +412,8 @@ class RomExportTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            texture_paths = Rom.export_textures(rom, root / "textures")
             asset_paths = Rom.export_assets(rom, root / "assets", tables=(1, 8))
 
-            self.assertEqual(
-                texture_paths,
-                [
-                    root / "textures" / "table_07" / "000000_offset_00000007.bin",
-                    root / "textures" / "table_14" / "000000_offset_0000000e.bin",
-                    root / "textures" / "table_25" / "000000_offset_00000019.bin",
-                ],
-            )
             self.assertEqual(
                 asset_paths,
                 [
@@ -345,7 +421,6 @@ class RomExportTest(unittest.TestCase):
                     root / "assets" / "table_08" / "000000_offset_00000008.bin",
                 ],
             )
-            self.assertEqual(texture_paths[0].read_bytes(), b"\x07")
             self.assertEqual(asset_paths[-1].read_bytes(), b"\x08")
 
     def test_export_all_combines_supported_exports(self):
@@ -355,7 +430,7 @@ class RomExportTest(unittest.TestCase):
                 Path(folderpath) / f"textures_{include_textures}.{geometry_format}"
             ]
         )
-        rom.export_textures = lambda folderpath: [Path(folderpath) / "texture.bin"]
+        rom.export_textures = lambda folderpath: [Path(folderpath) / "texture.png"]
         rom.export_text = lambda folderpath: [Path(folderpath) / "text.txt"]
         rom.export_cutscenes = lambda folderpath: [Path(folderpath) / "cutscene.bin"]
         rom.export_assets = lambda folderpath: [Path(folderpath) / "asset.bin"]
@@ -373,7 +448,7 @@ class RomExportTest(unittest.TestCase):
                 exported,
                 {
                     "geometries": [root / "geometries" / "textures_False.dae"],
-                    "textures": [root / "textures" / "texture.bin"],
+                    "textures": [root / "textures" / "texture.png"],
                     "text": [root / "text" / "text.txt"],
                     "cutscenes": [root / "cutscenes" / "cutscene.bin"],
                     "assets": [root / "assets" / "asset.bin"],

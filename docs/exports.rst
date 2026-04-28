@@ -164,14 +164,20 @@ Textures
 
    paths = rom.export_textures("dk64_export/textures")
 
-Texture table entries are exported as decompressed binary files grouped by
-source table:
+Texture export writes PNG files for geometry textures referenced by display
+lists. Those display lists provide the F3DEX2 format, size, palette, width, and
+height information needed to decode the raw table 25 bytes:
 
 .. code-block:: text
 
-   table_07/000000_offset_00123456.bin
-   table_14/000000_offset_00123456.bin
-   table_25/000000_offset_00123456.bin
+   table_25/tex_0_pal_1_f2_s0_32x64.png
+   table_25/tex_2_pal_none_f0_s2_32x32.png
+   table_25/tex_158_pal_159_f2_s1_32x32_mip1_16x16.png
+
+Tables 7 and 14, and unreferenced entries from table 25, do not currently have
+enough parsed metadata for reliable standalone image export. Use
+``Rom.export_assets()`` or ``Rom.export_raw_tables()`` when you need their
+decompressed ``.bin`` records for analysis.
 
 Cutscenes
 ---------

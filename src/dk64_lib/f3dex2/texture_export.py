@@ -263,20 +263,8 @@ class TexturedObjExporter:
         texture_folder: str = "textures",
     ) -> TexturedObjExport:
         groups = tuple(self._iter_mesh_groups(display_lists))
-        textures = tuple(
-            texture
-            for texture in dict.fromkeys(group.texture for group in groups)
-            if texture
-        )
-        texture_plans = tuple(
-            _TextureExportPlan(texture, self._decoded_texture_levels(texture))
-            for texture in textures
-        )
-        images = tuple(
-            image
-            for texture_plan in texture_plans
-            for image in self._texture_images(texture_plan, texture_folder)
-        )
+        texture_plans = self._texture_plans_for_groups(groups)
+        images = self._texture_images_for_plans(texture_plans, texture_folder)
         transparent_textures = tuple(
             texture_plan.texture
             for texture_plan in texture_plans
@@ -290,6 +278,41 @@ class TexturedObjExporter:
                 mtl_filename,
                 transparent_textures,
             ),
+        )
+
+    def export_texture_images(
+        self,
+        display_lists: Iterable[object],
+        texture_folder: str = "textures",
+    ) -> tuple[TextureImageFile, ...]:
+        """Export PNG files for textures identified by F3DEX2 display lists."""
+        groups = tuple(self._iter_mesh_groups(display_lists))
+        texture_plans = self._texture_plans_for_groups(groups)
+        return self._texture_images_for_plans(texture_plans, texture_folder)
+
+    def _texture_plans_for_groups(
+        self,
+        groups: tuple[_MeshGroup, ...],
+    ) -> tuple[_TextureExportPlan, ...]:
+        textures = tuple(
+            texture
+            for texture in dict.fromkeys(group.texture for group in groups)
+            if texture
+        )
+        return tuple(
+            _TextureExportPlan(texture, self._decoded_texture_levels(texture))
+            for texture in textures
+        )
+
+    def _texture_images_for_plans(
+        self,
+        texture_plans: tuple[_TextureExportPlan, ...],
+        texture_folder: str,
+    ) -> tuple[TextureImageFile, ...]:
+        return tuple(
+            image
+            for texture_plan in texture_plans
+            for image in self._texture_images(texture_plan, texture_folder)
         )
 
     def _iter_mesh_groups(

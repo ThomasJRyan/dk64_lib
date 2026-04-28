@@ -9,12 +9,15 @@ from re import sub
 from typing import Literal, Generator
 
 from dk64_lib.data_types import TextureData, TextData, CutsceneData, GeometryData
-from dk64_lib.f3dex2.texture_export import TextureAnimationFrames
+from dk64_lib.f3dex2.texture_export import (
+    TextureAnimationFrames,
+    TextureImageFile,
+    TexturedObjExporter,
+)
 from dk64_lib.constants import MAPS
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
-TEXTURE_TABLES = (7, 14, 25)
 RAW_EXPORT_TABLES = (1, 7, 8, 12, 14, 25)
 
 
@@ -136,22 +139,29 @@ class Rom:
         return [geometry_data for geometry_data in self.get_geometry_data()]
 
     def export_textures(self, folderpath: str | Path = "exports/textures") -> list[Path]:
-        """Export raw texture table entries grouped by table number."""
-        exported_paths = list()
+        """Export decoded geometry textures as PNG images."""
         root = Path(folderpath)
-        for table_id in TEXTURE_TABLES:
-            table_folder = root / f"table_{table_id:02d}"
-            for texture_index, table_data in enumerate(
-                self.generate_rom_table_data([table_id])
-            ):
-                filename = (
-                    f"{texture_index:06d}_"
-                    f"offset_{table_data['offset']:08x}.bin"
-                )
-                exported_paths.append(
-                    self._write_bytes(table_folder / filename, table_data["raw_data"])
-                )
-        return exported_paths
+        return [
+            self._write_bytes(root / image.filename, image.data)
+            for image in self.create_texture_images(texture_folder="table_25")
+        ]
+
+    def create_texture_images(
+        self,
+        texture_folder: str = "table_25",
+    ) -> tuple[TextureImageFile, ...]:
+        """Create PNG images for geometry textures with display-list metadata."""
+        display_lists = tuple(
+            display_list
+            for geometry_data in self.geometry_tables
+            if not geometry_data.is_pointer
+            for display_list in geometry_data.display_lists
+        )
+        exporter = TexturedObjExporter(self.get_geometry_texture_data())
+        return exporter.export_texture_images(
+            display_lists,
+            texture_folder=texture_folder,
+        )
 
     def export_text(self, folderpath: str | Path = "exports/text") -> list[Path]:
         """Export parsed text tables as UTF-8 text files."""
