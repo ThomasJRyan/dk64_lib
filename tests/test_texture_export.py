@@ -210,6 +210,21 @@ def _glb_chunks(data: bytes) -> tuple[dict, bytes]:
     return json_chunk, bin_chunk
 
 
+def _gltf_accessor_floats(gltf: dict, binary_data: bytes, accessor_index: int) -> tuple[float, ...]:
+    accessor = gltf["accessors"][accessor_index]
+    buffer_view = gltf["bufferViews"][accessor["bufferView"]]
+    start = buffer_view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
+    component_counts = {
+        "SCALAR": 1,
+        "VEC2": 2,
+        "VEC3": 3,
+        "VEC4": 4,
+    }
+    count = accessor["count"] * component_counts[accessor["type"]]
+    end = start + count * 4
+    return struct.unpack(f"<{count}f", binary_data[start:end])
+
+
 class TextureExportTest(unittest.TestCase):
     def test_decode_rgba16_texture(self):
         rgba = decode_texture(
@@ -508,6 +523,14 @@ class TextureExportTest(unittest.TestCase):
         )
         self.assertEqual(primitive["mode"], 4)
         self.assertEqual(gltf["accessors"][primitive["attributes"]["COLOR_0"]]["type"], "VEC4")
+        self.assertEqual(
+            _gltf_accessor_floats(
+                gltf,
+                export.binary_data,
+                primitive["attributes"]["TEXCOORD_0"],
+            ),
+            (0.0, 0.0, 1.0, 0.0, 0.0, 1.0),
+        )
         self.assertIn("KHR_materials_unlit", gltf["extensionsUsed"])
 
     def test_glb_exporter_embeds_texture_and_alpha_material(self):

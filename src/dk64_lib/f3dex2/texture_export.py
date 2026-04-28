@@ -1318,7 +1318,8 @@ def _gltf_add_texcoord_accessor(
     texture: _TextureKey,
 ) -> int:
     payload = b"".join(
-        struct.pack("<ff", *_uv_for_vertex(vertex, texture)) for vertex in vertices
+        struct.pack("<ff", *_gltf_uv_for_vertex(vertex, texture))
+        for vertex in vertices
     )
     return _gltf_add_accessor(
         gltf,
@@ -2646,6 +2647,16 @@ def _tile_dimensions(command: commands.G_SETTILESIZE) -> tuple[int, int]:
 def _uv_for_vertex(vertex: Vertex, texture: _TextureKey) -> tuple[float, float]:
     u = _signed_16(vertex.texture_cord_u) / 32 / texture.width
     v = 1 - (_signed_16(vertex.texture_cord_v) / 32 / texture.height)
+    if texture.clamp_s:
+        u = _clamp_unit(u)
+    if texture.clamp_t:
+        v = _clamp_unit(v)
+    return u, v
+
+
+def _gltf_uv_for_vertex(vertex: Vertex, texture: _TextureKey) -> tuple[float, float]:
+    u = _signed_16(vertex.texture_cord_u) / 32 / texture.width
+    v = _signed_16(vertex.texture_cord_v) / 32 / texture.height
     if texture.clamp_s:
         u = _clamp_unit(u)
     if texture.clamp_t:

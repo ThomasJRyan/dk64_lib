@@ -211,12 +211,20 @@ F3DEX2 stores per-vertex texture coordinates as signed 16-bit fixed-point
 values. The current exporter interprets them with 5 fractional bits, so one
 texel is ``32`` units.
 
-The OBJ, glTF, GLB, and DAE UV conversion is:
+The OBJ and DAE UV conversion is:
 
 .. code-block:: text
 
    u = signed_16(texture_cord_u) / 32 / texture_width
    v = 1 - (signed_16(texture_cord_v) / 32 / texture_height)
+
+The glTF and GLB UV conversion uses the same ``u`` value, but writes the source
+``v`` value without the OBJ/DAE vertical-axis flip:
+
+.. code-block:: text
+
+   u = signed_16(texture_cord_u) / 32 / texture_width
+   v = signed_16(texture_cord_v) / 32 / texture_height
 
 Important details:
 
@@ -224,8 +232,9 @@ Important details:
   has the N64 clamp bit set for that axis. Otherwise values outside ``0..1``
   are preserved so normal texture wrapping/repeating can still work in import
   tools.
-* The exported vertical texture axis is inverted relative to the convention
-  used by the source data, so the exporter writes ``1 - v``.
+* OBJ and DAE invert the vertical texture axis to match those importer
+  conventions. glTF and GLB keep the source vertical axis because Blender's
+  glTF importer applies the expected image orientation for that format.
 * Texture width and height come from the active ``G_SETTILESIZE`` command, not
   from the raw byte count.
 * ``G_TEXTURE`` scale values are parsed by the command class but are not applied
