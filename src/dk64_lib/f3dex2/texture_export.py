@@ -683,6 +683,9 @@ def _has_packed_mipmap_storage(
     return _raw_texture_pixel_count(raw_texture, size) >= required_pixels
 
 
+_BASE_ONLY_MIPMAP_TEST_SPECS = ((208, 209, 2, 0, 64, 32),)
+
+
 def test_mipmap_export(
     texture_source: object,
     folderpath: str | pathlib.Path = "mipmap_test",
@@ -693,6 +696,7 @@ def test_mipmap_export(
     width: int = 32,
     height: int = 32,
     include_ci4_reference: bool = True,
+    include_base_references: bool = True,
 ) -> list[pathlib.Path]:
     """Export DK64 packed mipmap candidates for quick visual iteration."""
     texture_data = _geometry_texture_table(texture_source)
@@ -701,6 +705,13 @@ def test_mipmap_export(
     ci4_reference = (0, 1, 2, 0, 32, 64)
     if include_ci4_reference and ci4_reference not in specs:
         specs.append(ci4_reference)
+    if include_base_references:
+        for reference in _BASE_ONLY_MIPMAP_TEST_SPECS:
+            if (
+                reference not in specs
+                and _raw_texture_data(texture_data, reference[0]) is not None
+            ):
+                specs.append(reference)
 
     for spec in specs:
         filepaths.extend(
@@ -739,6 +750,21 @@ def _test_mipmap_export_for_texture(
         height=base_height,
         palette_data=raw_palette,
     )
+    if (texture_index, palette_index, fmt, size, width, height) in (
+        _BASE_ONLY_MIPMAP_TEST_SPECS
+    ):
+        return _test_base_mipmap_export_for_texture(
+            folderpath,
+            texture_index,
+            palette_index,
+            fmt,
+            size,
+            width,
+            height,
+            base_width,
+            base_height,
+            base_rgba,
+        )
     if (texture_index, palette_index, fmt, size, width, height) == (0, 1, 2, 0, 32, 64):
         return _test_packed_mipmap_export_for_texture(
             folderpath,
@@ -834,6 +860,30 @@ def _test_mipmap_export_for_texture(
         filepath.write_bytes(rgba_to_png(output_width, output_height, rgba))
         filepaths.append(filepath)
     return filepaths
+
+
+def _test_base_mipmap_export_for_texture(
+    folderpath: pathlib.Path,
+    texture_index: int,
+    palette_index: int | None,
+    fmt: int,
+    size: int,
+    width: int,
+    height: int,
+    base_width: int,
+    base_height: int,
+    base_rgba: bytes,
+) -> list[pathlib.Path]:
+    return _write_test_mipmap_outputs(
+        folderpath,
+        texture_index,
+        palette_index,
+        fmt,
+        size,
+        width,
+        height,
+        (("base", base_width, base_height, base_rgba),),
+    )
 
 
 def _test_packed_mipmap_export_for_texture(

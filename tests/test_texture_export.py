@@ -730,6 +730,32 @@ class TextureExportTest(unittest.TestCase):
                 _indexed_rgba(3, 4, 1, 2),
             )
 
+    def test_test_mipmap_export_writes_ci4_64x32_base_only(self):
+        palette = b"".join(_rgba16(value, value, value) for value in range(0, 256, 17))
+        base_pixels = tuple(range(16)) * 172
+        texture_data = [SimpleNamespace(raw_data=b"") for index in range(210)]
+        texture_data[208] = SimpleNamespace(raw_data=_ci4_indices(*base_pixels))
+        texture_data[209] = SimpleNamespace(raw_data=palette)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepaths = export_test_mipmap(
+                texture_data,
+                folderpath=tmpdir,
+                texture_index=208,
+                palette_index=209,
+                fmt=2,
+                size=0,
+                width=64,
+                height=32,
+                include_ci4_reference=False,
+            )
+
+            self.assertEqual(
+                [filepath.name for filepath in filepaths],
+                ["tex_208_pal_209_f2_s0_64x32_base_64x43.png"],
+            )
+            self.assertEqual(_png_rgba(filepaths[0].read_bytes())[0], (64, 43))
+
     def test_save_textured_obj_export_writes_assets(self):
         texture_data = [SimpleNamespace(raw_data=_rgba16(255, 0, 0))]
         commands = b"".join(
