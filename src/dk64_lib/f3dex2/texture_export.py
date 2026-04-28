@@ -19,10 +19,17 @@ class TextureImageFile:
 
 
 @dataclass(frozen=True, slots=True)
+class TexturedObjSupportFile:
+    filename: str
+    data: str
+
+
+@dataclass(frozen=True, slots=True)
 class TexturedObjExport:
     obj_data: str
     mtl_data: str
     images: tuple[TextureImageFile, ...]
+    support_files: tuple[TexturedObjSupportFile, ...] = tuple()
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,10 +222,19 @@ class TexturedObjExporter:
             for texture_plan in texture_plans
             for image in self._texture_images(texture_plan, texture_folder)
         )
+        transparent_textures = tuple(
+            texture_plan.texture
+            for texture_plan in texture_plans
+            if _texture_level_has_transparency(texture_plan.levels[0])
+        )
         return TexturedObjExport(
             obj_data=self._obj_data(groups, mtl_filename),
             mtl_data=self._mtl_data(texture_plans, texture_folder),
             images=images,
+            support_files=_blender_material_setup_support_files(
+                mtl_filename,
+                transparent_textures,
+            ),
         )
 
     def _iter_mesh_groups(
@@ -498,6 +514,12 @@ def save_textured_obj_export(
         image_path.write_bytes(image.data)
         written_paths.append(image_path)
 
+    for support_file in export.support_files:
+        support_path = folder / support_file.filename
+        support_path.parent.mkdir(parents=True, exist_ok=True)
+        support_path.write_text(support_file.data)
+        written_paths.append(support_path)
+
     return written_paths
 
 
@@ -532,6 +554,63 @@ def _mtl_texture_map_statement(
 ) -> str:
     options = " -clamp on" if texture.clamp_s or texture.clamp_t else ""
     return f"{map_name}{options} {texture_folder}/{texture.image_filename}"
+
+
+def _blender_material_setup_support_files(
+    mtl_filename: str,
+    transparent_textures: tuple[_TextureKey, ...],
+) -> tuple[TexturedObjSupportFile, ...]:
+    if not transparent_textures:
+        return tuple()
+    filename = pathlib.Path(mtl_filename).with_suffix(".blender.py").name
+    material_names = tuple(texture.material_name for texture in transparent_textures)
+    return (
+        TexturedObjSupportFile(
+            filename=filename,
+            data=_blender_material_setup_script(material_names),
+        ),
+    )
+
+
+def _blender_material_setup_script(material_names: tuple[str, ...]) -> str:
+    material_lines = "\n".join(f"    {material_name!r}," for material_name in material_names)
+    return f"""\
+\"\"\"Apply Blender-specific material settings for a dk64_lib OBJ import.
+
+Run this after importing the matching OBJ file. It switches transparent DK64
+materials to Blender's Blended render method, which OBJ/MTL cannot express.
+\"\"\"
+
+import bpy
+
+
+TRANSPARENT_MATERIALS = (
+{material_lines}
+)
+
+
+def _try_set(material, attribute, value):
+    if not hasattr(material, attribute):
+        return
+    try:
+        setattr(material, attribute, value)
+    except Exception as exc:
+        print(f\"Could not set {{material.name}}.{{attribute}}: {{exc}}\")
+
+
+for material_name in TRANSPARENT_MATERIALS:
+    material = bpy.data.materials.get(material_name)
+    if material is None:
+        print(f\"Missing material: {{material_name}}\")
+        continue
+
+    _try_set(material, \"surface_render_method\", \"BLENDED\")
+    _try_set(material, \"blend_method\", \"BLEND\")
+    _try_set(material, \"use_transparency_overlap\", False)
+    _try_set(material, \"show_transparent_back\", False)
+
+print(f\"Configured {{len(TRANSPARENT_MATERIALS)}} transparent DK64 material(s).\")
+"""
 
 
 def _decode_packed_mipmap_levels(

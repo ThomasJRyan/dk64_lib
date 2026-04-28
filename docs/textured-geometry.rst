@@ -245,6 +245,15 @@ transparent, white means opaque. This is more compatible than pointing
 ``map_d`` at the color PNG, because some OBJ importers read opacity from image
 luminance rather than from the PNG alpha channel.
 
+MTL can describe opacity maps, but it cannot describe Blender's
+``Render Method`` setting. When a textured OBJ export contains transparent
+materials, ``dk64_lib`` therefore writes a companion Blender script named after
+the MTL file, for example ``034_DK_Isles_Overworld.blender.py``. After importing
+the OBJ into Blender, run that script from Blender's Text Editor to switch only
+the transparent DK64 materials to ``Blended``. The script sets
+``surface_render_method = "BLENDED"`` on Blender 4.2 and newer and falls back to
+``blend_method = "BLEND"`` for older Blender versions.
+
 .. code-block:: text
 
    newmtl tex_0_pal_none_f0_s2_2x2
@@ -614,6 +623,8 @@ The current exporter is intentionally conservative:
 * OBJ/MTL importer support for ``-clamp on`` varies. The exporter emits it
   because it is part of the Wavefront material syntax, but clamped UVs are the
   compatibility fallback.
+* OBJ/MTL cannot express Blender's ``Blended`` render method. The generated
+  ``*.blender.py`` script is the Blender-specific workaround.
 * Unsupported formats fall back to a placeholder image instead of failing the
   export.
 

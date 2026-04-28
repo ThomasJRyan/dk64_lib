@@ -7,7 +7,9 @@ from types import SimpleNamespace
 
 from dk64_lib.f3dex2.display_list import DisplayList
 from dk64_lib.f3dex2.texture_export import (
+    TexturedObjExport,
     TexturedObjExporter,
+    TexturedObjSupportFile,
     decode_texture,
     rgba_to_png,
     save_textured_obj_export,
@@ -239,6 +241,7 @@ class TextureExportTest(unittest.TestCase):
         self.assertIn("f 1/1 2/2 3/3", export.obj_data)
         self.assertIn("map_Kd textures/tex_0_pal_none_f0_s2_2x2.png", export.mtl_data)
         self.assertNotIn("map_d", export.mtl_data)
+        self.assertEqual(export.support_files, tuple())
         self.assertEqual(len(export.images), 1)
         self.assertTrue(export.images[0].data.startswith(b"\x89PNG\r\n\x1a\n"))
 
@@ -280,6 +283,14 @@ class TextureExportTest(unittest.TestCase):
                 "textures/tex_0_pal_none_f0_s2_2x2_clamp_t_alpha.png",
             ],
         )
+        self.assertEqual(
+            [support_file.filename for support_file in export.support_files],
+            ["model.blender.py"],
+        )
+        blender_script = export.support_files[0].data
+        self.assertIn("'tex_0_pal_none_f0_s2_2x2_clamp_t'", blender_script)
+        self.assertIn('"surface_render_method", "BLENDED"', blender_script)
+        self.assertIn('"blend_method", "BLEND"', blender_script)
         alpha_size, alpha_pixels = _png_rgba(export.images[1].data)
         self.assertEqual(alpha_size, (2, 2))
         self.assertEqual(
@@ -1432,6 +1443,40 @@ class TextureExportTest(unittest.TestCase):
             self.assertTrue((export_folder / "model.obj").exists())
             self.assertTrue((export_folder / "model.mtl").exists())
             self.assertTrue(written_paths[-1].exists())
+
+    def test_save_textured_obj_export_writes_support_files(self):
+        export = TexturedObjExport(
+            obj_data="o model\n",
+            mtl_data="newmtl material\n",
+            images=tuple(),
+            support_files=(
+                TexturedObjSupportFile(
+                    filename="model.blender.py",
+                    data="print('configured')\n",
+                ),
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_folder = Path(tmpdir)
+            written_paths = save_textured_obj_export(
+                export,
+                "model.obj",
+                export_folder,
+            )
+
+            self.assertEqual(
+                written_paths,
+                [
+                    export_folder / "model.obj",
+                    export_folder / "model.mtl",
+                    export_folder / "model.blender.py",
+                ],
+            )
+            self.assertEqual(
+                (export_folder / "model.blender.py").read_text(),
+                "print('configured')\n",
+            )
 
 
 if __name__ == "__main__":

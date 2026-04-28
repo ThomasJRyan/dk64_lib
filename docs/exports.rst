@@ -53,6 +53,9 @@ OBJ exports include RGB vertex colors on ``v`` lines. Textured groups include
 Textures with transparent pixels also get dedicated ``*_alpha.png`` opacity
 masks and ``map_d`` alpha map entries. Textures using clamped DK64 tile state
 get clamped UVs and ``-clamp on`` MTL texture map hints.
+If any exported material is transparent, the exporter also writes
+``<obj_stem>.blender.py``. Run that script after importing the OBJ in Blender to
+switch those transparent materials to Blender's Blended render method.
 When a known DK64 packed mipmap layout is decoded, the MTL points at the
 highest-resolution PNG while the additional mip levels are written beside it.
 The production exporter does not write raw ``*_base_*`` mipmap reference images.
