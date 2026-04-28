@@ -474,7 +474,7 @@ class TextureExportTest(unittest.TestCase):
 
     def test_exporter_writes_standard_ci8_32x32_mipmap_levels(self):
         palette = b"".join(_rgba16(value, value, value) for value in range(0, 256, 17))
-        base_pixels = tuple(range(16)) * 88
+        base_pixels = tuple(range(16)) * 86
         texture_data = [SimpleNamespace(raw_data=b"") for index in range(160)]
         texture_data[158] = SimpleNamespace(raw_data=bytes(base_pixels))
         texture_data[159] = SimpleNamespace(raw_data=palette)
@@ -582,7 +582,7 @@ class TextureExportTest(unittest.TestCase):
         self.assertEqual(
             mip3_pixels[4 * 4 : 8 * 4],
             decode_texture(
-                bytes(tuple(range(8, 12))),
+                bytes(tuple(range(12, 16))),
                 fmt=2,
                 size=1,
                 width=4,
@@ -1024,7 +1024,7 @@ class TextureExportTest(unittest.TestCase):
 
     def test_test_mipmap_export_writes_ci8_32x32_mipmap_levels(self):
         palette = b"".join(_rgba16(value, value, value) for value in range(0, 256, 17))
-        base_pixels = tuple(range(16)) * 88
+        base_pixels = tuple(range(16)) * 86
         texture_data = [SimpleNamespace(raw_data=b"") for index in range(160)]
         texture_data[158] = SimpleNamespace(raw_data=bytes(base_pixels))
         texture_data[159] = SimpleNamespace(raw_data=palette)
@@ -1045,14 +1045,14 @@ class TextureExportTest(unittest.TestCase):
             self.assertEqual(
                 [filepath.name for filepath in filepaths],
                 [
-                    "tex_158_pal_159_f2_s1_32x32_base_32x44.png",
+                    "tex_158_pal_159_f2_s1_32x32_base_32x43.png",
                     "tex_158_pal_159_f2_s1_32x32.png",
                     "tex_158_pal_159_f2_s1_32x32_mip1_16x16.png",
                     "tex_158_pal_159_f2_s1_32x32_mip2_8x8.png",
                     "tex_158_pal_159_f2_s1_32x32_mip3_4x4.png",
                 ],
             )
-            self.assertEqual(_png_rgba(filepaths[0].read_bytes())[0], (32, 44))
+            self.assertEqual(_png_rgba(filepaths[0].read_bytes())[0], (32, 43))
             self.assertEqual(_png_rgba(filepaths[1].read_bytes())[0], (32, 32))
             self.assertEqual(_png_rgba(filepaths[2].read_bytes())[0], (16, 16))
             self.assertEqual(_png_rgba(filepaths[3].read_bytes())[0], (8, 8))

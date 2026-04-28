@@ -602,6 +602,7 @@ def _decode_standard_indexed_mipmap_levels(
         level2_swap_group_pixels=_standard_indexed_level2_swap_group_pixels(
             texture.size
         ),
+        level3_row_offsets=_standard_indexed_level3_row_offsets(texture.size),
     )
 
 
@@ -746,6 +747,7 @@ def _standard_mipmap_levels(
     level0_swap_group_pixels: int = 16,
     level1_swap_group_pixels: int | None = None,
     level2_swap_group_pixels: int | None = None,
+    level3_row_offsets: tuple[int, ...] | None = None,
 ) -> tuple[_DecodedTextureLevel, ...]:
     level0_width, level0_height = width, height
     level1_width, level1_height = max(1, width // 2), max(1, height // 2)
@@ -802,13 +804,13 @@ def _standard_mipmap_levels(
             3,
             level3_width,
             level3_height,
-            _slice_sparse_paired_rows_rgba(
+            _standard_level3_rgba(
                 base_rgba,
                 start_pixel=level3_start_pixel,
                 output_width=level3_width,
                 output_height=level3_height,
-                source_group_pixels=width,
-                skipped_pixels=width - (level3_width * 3),
+                source_width=width,
+                row_offsets=level3_row_offsets,
             ),
         ),
     )
@@ -824,6 +826,10 @@ def _standard_indexed_level1_swap_group_pixels(size: int) -> int | None:
 
 def _standard_indexed_level2_swap_group_pixels(size: int) -> int | None:
     return 8 if size == 1 else None
+
+
+def _standard_indexed_level3_row_offsets(size: int) -> tuple[int, ...] | None:
+    return (0, 12, 16, 28) if size == 1 else None
 
 
 def _standard_level1_rgba(
@@ -879,6 +885,43 @@ def _standard_level2_storage_pixels(
     if swap_group_pixels is None:
         return source_width * math.ceil(output_height / 2)
     return source_width * math.ceil(output_height / max(1, source_width // output_width))
+
+
+def _standard_level3_rgba(
+    base_rgba: bytes,
+    start_pixel: int,
+    output_width: int,
+    output_height: int,
+    source_width: int,
+    row_offsets: tuple[int, ...] | None,
+) -> bytes:
+    if row_offsets is None:
+        return _slice_sparse_paired_rows_rgba(
+            base_rgba,
+            start_pixel=start_pixel,
+            output_width=output_width,
+            output_height=output_height,
+            source_group_pixels=source_width,
+            skipped_pixels=source_width - (output_width * 3),
+        )
+    return _slice_offset_rows_rgba(
+        base_rgba,
+        start_pixel=start_pixel,
+        output_width=output_width,
+        output_height=output_height,
+        source_group_pixels=source_width,
+        row_offsets=row_offsets,
+    )
+
+
+def _standard_level3_storage_pixels(
+    source_width: int,
+    output_height: int,
+    row_offsets: tuple[int, ...] | None,
+) -> int:
+    if row_offsets is None:
+        return source_width * math.ceil(output_height / 2)
+    return source_width * math.ceil(output_height / max(1, len(row_offsets)))
 
 
 def _packed_rgba_mipmap_levels(
@@ -967,6 +1010,7 @@ def _standard_mipmap_storage_pixels(width: int, height: int, size: int) -> int:
     level2_width = max(1, width // 4)
     level2_height = max(1, height // 4)
     level3_height = max(1, height // 8)
+    level3_row_offsets = _standard_indexed_level3_row_offsets(size)
     return (
         (width * height)
         + (max(1, width // 2) * max(1, height // 2))
@@ -976,7 +1020,7 @@ def _standard_mipmap_storage_pixels(width: int, height: int, size: int) -> int:
             level2_height,
             _standard_indexed_level2_swap_group_pixels(size),
         )
-        + (width * math.ceil(level3_height / 2))
+        + _standard_level3_storage_pixels(width, level3_height, level3_row_offsets)
     )
 
 
@@ -1243,6 +1287,7 @@ def _test_standard_mipmap_export_for_texture(
             level0_swap_group_pixels=_standard_indexed_level0_swap_group_pixels(size),
             level1_swap_group_pixels=_standard_indexed_level1_swap_group_pixels(size),
             level2_swap_group_pixels=_standard_indexed_level2_swap_group_pixels(size),
+            level3_row_offsets=_standard_indexed_level3_row_offsets(size),
         )
     )
     return _write_test_mipmap_outputs(
