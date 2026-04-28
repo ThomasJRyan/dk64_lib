@@ -500,7 +500,11 @@ def _decode_packed_mipmap_levels(
         and _has_packed_mipmap_storage(
             raw_texture,
             texture.size,
-            _standard_mipmap_storage_pixels(texture.width, texture.height),
+            _standard_mipmap_storage_pixels(
+                texture.width,
+                texture.height,
+                texture.size,
+            ),
         )
     ):
         return _decode_standard_indexed_mipmap_levels(
@@ -593,6 +597,9 @@ def _decode_standard_indexed_mipmap_levels(
             texture.size
         ),
         level1_swap_group_pixels=_standard_indexed_level1_swap_group_pixels(
+            texture.size
+        ),
+        level2_swap_group_pixels=_standard_indexed_level2_swap_group_pixels(
             texture.size
         ),
     )
@@ -738,6 +745,7 @@ def _standard_mipmap_levels(
     base_rgba: bytes,
     level0_swap_group_pixels: int = 16,
     level1_swap_group_pixels: int | None = None,
+    level2_swap_group_pixels: int | None = None,
 ) -> tuple[_DecodedTextureLevel, ...]:
     level0_width, level0_height = width, height
     level1_width, level1_height = max(1, width // 2), max(1, height // 2)
@@ -745,7 +753,12 @@ def _standard_mipmap_levels(
     level3_width, level3_height = max(1, width // 8), max(1, height // 8)
     level0_pixels = level0_width * level0_height
     level1_pixels = level1_width * level1_height
-    level2_storage_pixels = width * math.ceil(level2_height / 2)
+    level2_storage_pixels = _standard_level2_storage_pixels(
+        width,
+        level2_width,
+        level2_height,
+        level2_swap_group_pixels,
+    )
     level2_start_pixel = level0_pixels + level1_pixels
     level3_start_pixel = level2_start_pixel + level2_storage_pixels
 
@@ -776,13 +789,13 @@ def _standard_mipmap_levels(
             2,
             level2_width,
             level2_height,
-            _slice_sparse_paired_rows_rgba(
+            _standard_level2_rgba(
                 base_rgba,
                 start_pixel=level2_start_pixel,
                 output_width=level2_width,
                 output_height=level2_height,
-                source_group_pixels=width,
-                skipped_pixels=width - (level2_width * 2),
+                source_width=width,
+                swap_group_pixels=level2_swap_group_pixels,
             ),
         ),
         _DecodedTextureLevel(
@@ -809,6 +822,10 @@ def _standard_indexed_level1_swap_group_pixels(size: int) -> int | None:
     return 8 if size == 1 else None
 
 
+def _standard_indexed_level2_swap_group_pixels(size: int) -> int | None:
+    return 8 if size == 1 else None
+
+
 def _standard_level1_rgba(
     base_rgba: bytes,
     start_pixel: int,
@@ -824,6 +841,44 @@ def _standard_level1_rgba(
         source_width=width,
         group_pixels=swap_group_pixels,
     )
+
+
+def _standard_level2_rgba(
+    base_rgba: bytes,
+    start_pixel: int,
+    output_width: int,
+    output_height: int,
+    source_width: int,
+    swap_group_pixels: int | None,
+) -> bytes:
+    if swap_group_pixels is None:
+        return _slice_sparse_paired_rows_rgba(
+            base_rgba,
+            start_pixel=start_pixel,
+            output_width=output_width,
+            output_height=output_height,
+            source_group_pixels=source_width,
+            skipped_pixels=source_width - (output_width * 2),
+        )
+    return _slice_segmented_rows_rgba(
+        base_rgba,
+        start_pixel=start_pixel,
+        output_width=output_width,
+        output_height=output_height,
+        source_group_pixels=source_width,
+        swap_group_pixels=swap_group_pixels,
+    )
+
+
+def _standard_level2_storage_pixels(
+    source_width: int,
+    output_width: int,
+    output_height: int,
+    swap_group_pixels: int | None,
+) -> int:
+    if swap_group_pixels is None:
+        return source_width * math.ceil(output_height / 2)
+    return source_width * math.ceil(output_height / max(1, source_width // output_width))
 
 
 def _packed_rgba_mipmap_levels(
@@ -908,13 +963,19 @@ def _packed_ci4_mipmap_storage_pixels(width: int, height: int) -> int:
     )
 
 
-def _standard_mipmap_storage_pixels(width: int, height: int) -> int:
+def _standard_mipmap_storage_pixels(width: int, height: int, size: int) -> int:
+    level2_width = max(1, width // 4)
     level2_height = max(1, height // 4)
     level3_height = max(1, height // 8)
     return (
         (width * height)
         + (max(1, width // 2) * max(1, height // 2))
-        + (width * math.ceil(level2_height / 2))
+        + _standard_level2_storage_pixels(
+            width,
+            level2_width,
+            level2_height,
+            _standard_indexed_level2_swap_group_pixels(size),
+        )
         + (width * math.ceil(level3_height / 2))
     )
 
@@ -1181,6 +1242,7 @@ def _test_standard_mipmap_export_for_texture(
             base_rgba,
             level0_swap_group_pixels=_standard_indexed_level0_swap_group_pixels(size),
             level1_swap_group_pixels=_standard_indexed_level1_swap_group_pixels(size),
+            level2_swap_group_pixels=_standard_indexed_level2_swap_group_pixels(size),
         )
     )
     return _write_test_mipmap_outputs(
