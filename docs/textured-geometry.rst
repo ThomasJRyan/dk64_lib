@@ -401,6 +401,64 @@ For batch exports, ``Rom.export_geometries(..., geometry_format="dae")`` writes
 ``.dae`` files instead of ``.obj`` files. ``Rom.export_all()`` accepts the same
 ``geometry_format`` option and passes it through to geometry export.
 
+Animated DAE Texture Atlases
+----------------------------
+
+Some DK64 materials are expected to animate by swapping through a run of texture
+frames. The current library does not yet parse a first-class texture-animation
+table, so DAE animation export is intentionally opt-in: the caller supplies the
+frame indices that belong to a material's first frame.
+
+For a texture whose geometry display list references texture index ``31``, and
+whose animation frames live at texture indices ``31`` through ``38``, export a
+DAE preview like this:
+
+.. code-block:: python
+
+   rom.geometry_tables[1].save_to_dae(
+       "funkys_store.dae",
+       "dk64_export/geometries",
+       animated_texture_frames={31: range(31, 39)},
+       animation_frame_duration=4,
+   )
+
+The same option is available on ROM-level DAE export:
+
+.. code-block:: python
+
+   rom.export_geometries(
+       "dk64_export/geometries",
+       geometry_format="dae",
+       animated_texture_frames={31: range(31, 39)},
+       animation_frame_duration=4,
+   )
+
+Each mapping key is the base texture index used by the geometry. Each value is
+the ordered list of frame texture indices. When a color-indexed animation needs
+different palettes per frame, use ``(texture_index, palette_index)`` tuples in
+the frame list. Plain integer frame entries reuse the palette from the material
+referenced by the display list.
+
+For each animated material, the DAE exporter:
+
+* decodes each supplied frame with the material's ``fmt``, ``size``, width, and
+  height;
+* stitches the frames horizontally into one atlas named
+  ``<material_name>_anim_<count>frames.png``;
+* writes an ``*_alpha.png`` atlas mask when any frame contains transparent
+  pixels;
+* points the DAE material at the stitched atlas instead of the standalone frame
+  PNG;
+* scales the DAE ``TEXCOORD`` ``S`` values by ``1 / frame_count`` so the static
+  DAE import displays frame 0 correctly;
+* writes ``animated_textures.blender.py`` beside the DAE export.
+
+Run ``animated_textures.blender.py`` after importing the DAE into Blender. The
+script rebuilds the affected materials around the stitched atlas and keyframes a
+constant-stepped UV offset. This is Blender-specific support code because normal
+DAE material import does not reliably preserve or evaluate animated texture
+sampler state.
+
 Texture Decoding
 ----------------
 
@@ -735,6 +793,8 @@ The current exporter is intentionally conservative:
   that is what normal importers expect.
 * It parses ``G_TEXTURE`` scale fields but does not currently apply them to OBJ,
   glTF, GLB, or DAE UVs.
+* It does not auto-detect DK64 animated texture frame ranges. Animated DAE atlas
+  export requires an explicit ``animated_texture_frames`` mapping.
 * It writes RGB vertex colors to OBJ but does not write vertex alpha.
 * Texture clamp fields are translated to clamped OBJ UVs and ``-clamp on`` MTL
   texture map hints, to glTF/GLB ``wrapS``/``wrapT`` sampler values, and to DAE

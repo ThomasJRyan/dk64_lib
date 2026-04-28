@@ -13,6 +13,7 @@ from dk64_lib.f3dex2.display_list import (
     create_display_lists,
 )
 from dk64_lib.f3dex2.texture_export import (
+    TextureAnimationFrames,
     TexturedDaeExport,
     TexturedDaeExporter,
     TexturedGlbExport,
@@ -193,6 +194,8 @@ class GeometryData(BaseData):
     def create_textured_dae(
         self,
         texture_folder: str = "textures",
+        animated_texture_frames: TextureAnimationFrames | None = None,
+        animation_frame_duration: int = 4,
     ) -> TexturedDaeExport:
         """Creates DAE and texture image data for this geometry."""
         texture_data = self.rom.get_geometry_texture_data() if self.rom else tuple()
@@ -200,6 +203,8 @@ class GeometryData(BaseData):
         return exporter.export(
             self.display_lists,
             texture_folder=texture_folder,
+            animated_texture_frames=animated_texture_frames,
+            animation_frame_duration=animation_frame_duration,
         )
 
     def create_textured_gltf(
@@ -273,6 +278,8 @@ class GeometryData(BaseData):
         self,
         include_textures: bool = True,
         texture_folder: str = "textures",
+        animated_texture_frames: TextureAnimationFrames | None = None,
+        animation_frame_duration: int = 4,
     ) -> Collada:
         """Creates a dae file out of the geometry data
 
@@ -280,7 +287,11 @@ class GeometryData(BaseData):
             Collada: dae file
         """
         if include_textures:
-            return self.create_textured_dae(texture_folder).dae
+            return self.create_textured_dae(
+                texture_folder,
+                animated_texture_frames=animated_texture_frames,
+                animation_frame_duration=animation_frame_duration,
+            ).dae
         return self._create_geometry_only_dae()
 
     def _create_geometry_only_dae(self) -> Collada:
@@ -349,6 +360,8 @@ class GeometryData(BaseData):
         folderpath: str = ".",
         include_textures: bool = True,
         texture_folder: str = "textures",
+        animated_texture_frames: TextureAnimationFrames | None = None,
+        animation_frame_duration: int = 4,
     ) -> list[pathlib.Path]:
         """Save geometry data to dae format
 
@@ -361,7 +374,11 @@ class GeometryData(BaseData):
                 when include_textures is True. Defaults to "textures".
         """
         if include_textures:
-            export = self.create_textured_dae(texture_folder=texture_folder)
+            export = self.create_textured_dae(
+                texture_folder=texture_folder,
+                animated_texture_frames=animated_texture_frames,
+                animation_frame_duration=animation_frame_duration,
+            )
             return save_textured_dae_export(export, filename, folderpath)
 
         filepath = pathlib.Path(folderpath, filename)

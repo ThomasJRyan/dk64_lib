@@ -89,6 +89,24 @@ It writes:
 * ``textures/<material_name>_mip<level>_<width>x<height>.png`` when packed
   mipmap levels are decoded
 
+DAE export can also build a Blender preview for caller-supplied animated texture
+frames:
+
+.. code-block:: python
+
+   paths = rom.export_geometries(
+       "dk64_export/geometries",
+       geometry_format="dae",
+       animated_texture_frames={31: range(31, 39)},
+       animation_frame_duration=4,
+   )
+
+For those materials, the exporter writes
+``textures/<material_name>_anim_<count>frames.png`` and an
+``animated_textures.blender.py`` helper. The DAE references frame 0 in the atlas;
+run the helper script in Blender after importing the DAE to keyframe the atlas
+offset across the supplied frames.
+
 Pointer entries are written as:
 
 .. code-block:: text

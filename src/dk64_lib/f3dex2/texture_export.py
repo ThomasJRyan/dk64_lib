@@ -6,7 +6,7 @@ import struct
 import zlib
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Mapping, Sequence
 
 from collada import Collada
 from collada import geometry as collada_geometry
@@ -32,6 +32,12 @@ class TexturedObjSupportFile:
 
 
 @dataclass(frozen=True, slots=True)
+class TexturedDaeSupportFile:
+    filename: str
+    data: str
+
+
+@dataclass(frozen=True, slots=True)
 class TexturedObjExport:
     obj_data: str
     mtl_data: str
@@ -43,6 +49,7 @@ class TexturedObjExport:
 class TexturedDaeExport:
     dae: Collada
     images: tuple[TextureImageFile, ...]
+    support_files: tuple[TexturedDaeSupportFile, ...] = tuple()
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,11 +129,33 @@ class _TextureExportPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class _TextureAnimationFrame:
+    image_index: int
+    palette_index: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _TextureAnimationPlan:
+    texture: _TextureKey
+    frames: tuple[_TextureAnimationFrame, ...]
+    frame_duration: int
+    atlas_level: _DecodedTextureLevel
+
+    @property
+    def frame_count(self) -> int:
+        return len(self.frames)
+
+
+@dataclass(frozen=True, slots=True)
 class _MeshGroup:
     vertices: tuple[Vertex, ...]
     triangles: tuple[Triangle, ...]
     texture: _TextureKey | None
     display_list_offset: int
+
+
+TextureAnimationFrameRef = int | tuple[int, int | None]
+TextureAnimationFrames = Mapping[int, Sequence[TextureAnimationFrameRef]]
 
 
 class _TextureState:
@@ -492,6 +521,8 @@ class TexturedDaeExporter(TexturedObjExporter):
         self,
         display_lists: Iterable[object],
         texture_folder: str = "textures",
+        animated_texture_frames: TextureAnimationFrames | None = None,
+        animation_frame_duration: int = 4,
     ) -> TexturedDaeExport:
         groups = tuple(self._iter_mesh_groups(display_lists))
         textures = tuple(
@@ -503,15 +534,122 @@ class TexturedDaeExporter(TexturedObjExporter):
             _TextureExportPlan(texture, self._decoded_texture_levels(texture))
             for texture in textures
         )
+        animation_plans = tuple(
+            animation_plan
+            for texture_plan in texture_plans
+            if (
+                animation_plan := self._animation_plan(
+                    texture_plan,
+                    animated_texture_frames,
+                    animation_frame_duration,
+                )
+            )
+        )
+        animation_plans_by_texture = {
+            animation_plan.texture: animation_plan
+            for animation_plan in animation_plans
+        }
         images = tuple(
             image
             for texture_plan in texture_plans
-            for image in self._texture_images(texture_plan, texture_folder)
+            for image in self._dae_texture_images(
+                texture_plan,
+                texture_folder,
+                animation_plans_by_texture.get(texture_plan.texture),
+            )
         )
         return TexturedDaeExport(
-            dae=_dae_mesh(groups, texture_plans, texture_folder),
+            dae=_dae_mesh(
+                groups,
+                texture_plans,
+                texture_folder,
+                animation_plans_by_texture,
+            ),
             images=images,
+            support_files=_dae_animation_support_files(
+                animation_plans,
+                texture_folder,
+            ),
         )
+
+    def _animation_plan(
+        self,
+        texture_plan: _TextureExportPlan,
+        animated_texture_frames: TextureAnimationFrames | None,
+        animation_frame_duration: int,
+    ) -> _TextureAnimationPlan | None:
+        frames = _animation_frames_for_texture(
+            texture_plan.texture,
+            animated_texture_frames,
+        )
+        if not frames:
+            return None
+        frame_levels = tuple(
+            self._decoded_animation_frame(texture_plan.texture, frame)
+            for frame in frames
+        )
+        return _TextureAnimationPlan(
+            texture=texture_plan.texture,
+            frames=frames,
+            frame_duration=max(1, animation_frame_duration),
+            atlas_level=_horizontal_texture_atlas(frame_levels),
+        )
+
+    def _decoded_animation_frame(
+        self,
+        texture: _TextureKey,
+        frame: _TextureAnimationFrame,
+    ) -> _DecodedTextureLevel:
+        frame_texture = _TextureKey(
+            image_index=frame.image_index,
+            palette_index=frame.palette_index,
+            fmt=texture.fmt,
+            size=texture.size,
+            width=texture.width,
+            height=texture.height,
+            clamp_s=texture.clamp_s,
+            clamp_t=texture.clamp_t,
+        )
+        return self._decoded_texture_levels(frame_texture)[0]
+
+    def _dae_texture_images(
+        self,
+        texture_plan: _TextureExportPlan,
+        texture_folder: str,
+        animation_plan: _TextureAnimationPlan | None,
+    ) -> tuple[TextureImageFile, ...]:
+        if animation_plan is None:
+            return self._texture_images(texture_plan, texture_folder)
+
+        atlas_level = animation_plan.atlas_level
+        images = [
+            TextureImageFile(
+                filename=_texture_asset_filename(
+                    texture_folder,
+                    _animation_atlas_filename(animation_plan),
+                ),
+                data=rgba_to_png(
+                    atlas_level.width,
+                    atlas_level.height,
+                    atlas_level.rgba,
+                ),
+            )
+        ]
+        if _texture_level_has_transparency(atlas_level):
+            images.append(
+                TextureImageFile(
+                    filename=_texture_asset_filename(
+                        texture_folder,
+                        _animation_alpha_mask_filename(animation_plan),
+                    ),
+                    data=rgba_to_png(
+                        atlas_level.width,
+                        atlas_level.height,
+                        _alpha_mask_rgba(atlas_level.rgba),
+                    ),
+                )
+            )
+        return tuple(images)
 
 
 class TexturedGltfExporter(TexturedObjExporter):
@@ -693,6 +831,12 @@ def save_textured_dae_export(
         image_path.write_bytes(image.data)
         written_paths.append(image_path)
 
+    for support_file in export.support_files:
+        support_path = folder / support_file.filename
+        support_path.parent.mkdir(parents=True, exist_ok=True)
+        support_path.write_text(support_file.data)
+        written_paths.append(support_path)
+
     return written_paths
 
 
@@ -827,23 +971,250 @@ print(f\"Configured {{len(TRANSPARENT_MATERIALS)}} transparent DK64 material(s).
 """
 
 
+def _animation_frames_for_texture(
+    texture: _TextureKey,
+    animated_texture_frames: TextureAnimationFrames | None,
+) -> tuple[_TextureAnimationFrame, ...]:
+    if not animated_texture_frames:
+        return tuple()
+
+    frame_refs = animated_texture_frames.get(texture.image_index)
+    if not frame_refs or len(frame_refs) < 2:
+        return tuple()
+
+    return tuple(
+        _normalise_animation_frame_ref(frame_ref, texture.palette_index)
+        for frame_ref in frame_refs
+    )
+
+
+def _normalise_animation_frame_ref(
+    frame_ref: TextureAnimationFrameRef,
+    default_palette_index: int | None,
+) -> _TextureAnimationFrame:
+    if isinstance(frame_ref, tuple):
+        return _TextureAnimationFrame(
+            image_index=int(frame_ref[0]),
+            palette_index=frame_ref[1],
+        )
+    return _TextureAnimationFrame(
+        image_index=int(frame_ref),
+        palette_index=default_palette_index,
+    )
+
+
+def _horizontal_texture_atlas(
+    levels: tuple[_DecodedTextureLevel, ...],
+) -> _DecodedTextureLevel:
+    if not levels:
+        raise ValueError("animated texture sequence must include at least one frame")
+
+    frame_width = levels[0].width
+    frame_height = levels[0].height
+    atlas_width = frame_width * len(levels)
+    atlas = bytearray(atlas_width * frame_height * 4)
+    for frame_index, level in enumerate(levels):
+        if level.width != frame_width or level.height != frame_height:
+            raise ValueError("animated texture frames must share one size")
+        for row in range(frame_height):
+            source_start = row * frame_width * 4
+            source_finish = source_start + frame_width * 4
+            dest_start = (row * atlas_width + frame_index * frame_width) * 4
+            atlas[dest_start : dest_start + frame_width * 4] = level.rgba[
+                source_start:source_finish
+            ]
+    return _DecodedTextureLevel(
+        level=None,
+        width=atlas_width,
+        height=frame_height,
+        rgba=bytes(atlas),
+    )
+
+
+def _animation_atlas_filename(animation_plan: _TextureAnimationPlan) -> str:
+    return f"{animation_plan.texture.material_name}_anim_{animation_plan.frame_count}frames.png"
+
+
+def _animation_alpha_mask_filename(animation_plan: _TextureAnimationPlan) -> str:
+    return (
+        f"{animation_plan.texture.material_name}_anim_"
+        f"{animation_plan.frame_count}frames_alpha.png"
+    )
+
+
+def _dae_animation_support_files(
+    animation_plans: tuple[_TextureAnimationPlan, ...],
+    texture_folder: str,
+) -> tuple[TexturedDaeSupportFile, ...]:
+    if not animation_plans:
+        return tuple()
+    return (
+        TexturedDaeSupportFile(
+            filename="animated_textures.blender.py",
+            data=_dae_animation_blender_script(animation_plans, texture_folder),
+        ),
+    )
+
+
+def _dae_animation_blender_script(
+    animation_plans: tuple[_TextureAnimationPlan, ...],
+    texture_folder: str,
+) -> str:
+    entries = []
+    max_frame = 1
+    for animation_plan in animation_plans:
+        atlas_filename = _texture_asset_filename(
+            texture_folder,
+            _animation_atlas_filename(animation_plan),
+        )
+        has_alpha = _texture_level_has_transparency(animation_plan.atlas_level)
+        max_frame = max(
+            max_frame,
+            1 + animation_plan.frame_count * animation_plan.frame_duration,
+        )
+        entries.append(
+            "    "
+            f"{animation_plan.texture.material_name!r}: "
+            "{"
+            f"'image_path': {atlas_filename!r}, "
+            f"'frame_count': {animation_plan.frame_count}, "
+            f"'frame_duration': {animation_plan.frame_duration}, "
+            f"'has_alpha': {has_alpha!r}"
+            "},"
+        )
+    animation_entries = "\n".join(entries)
+    return f"""\
+\"\"\"Animate dk64_lib DAE texture atlases in Blender.
+
+Run this after importing the matching DAE file. The DAE itself references the
+stitched atlas and shows frame 0; this script adds constant-stepped UV offsets
+so Blender can preview the supplied texture frame sequence.
+\"\"\"
+
+from pathlib import Path
+
+import bpy
+
+
+ANIMATED_TEXTURES = {{
+{animation_entries}
+}}
+
+
+def _try_set(material, attribute, value):
+    if not hasattr(material, attribute):
+        return
+    try:
+        setattr(material, attribute, value)
+    except Exception as exc:
+        print(f\"Could not set {{material.name}}.{{attribute}}: {{exc}}\")
+
+
+def _input(node, name):
+    return node.inputs.get(name)
+
+
+def _output(node, name):
+    return node.outputs.get(name)
+
+
+root = Path(__file__).resolve().parent
+scene = bpy.context.scene
+scene.frame_start = 1
+scene.frame_end = max(scene.frame_end, {max_frame})
+
+for material_name, config in ANIMATED_TEXTURES.items():
+    material = bpy.data.materials.get(material_name)
+    if material is None:
+        print(f\"Missing material: {{material_name}}\")
+        continue
+
+    material.use_nodes = True
+    nodes = material.node_tree.nodes
+    links = material.node_tree.links
+    nodes.clear()
+
+    output = nodes.new(\"ShaderNodeOutputMaterial\")
+    shader = nodes.new(\"ShaderNodeBsdfPrincipled\")
+    texcoord = nodes.new(\"ShaderNodeTexCoord\")
+    mapping = nodes.new(\"ShaderNodeMapping\")
+    image_node = nodes.new(\"ShaderNodeTexImage\")
+
+    image_path = root / config[\"image_path\"]
+    image_node.image = bpy.data.images.load(str(image_path), check_existing=True)
+
+    uv_output = _output(texcoord, \"UV\")
+    mapping_input = _input(mapping, \"Vector\")
+    mapping_output = _output(mapping, \"Vector\")
+    image_input = _input(image_node, \"Vector\")
+    color_output = _output(image_node, \"Color\")
+    alpha_output = _output(image_node, \"Alpha\")
+    base_color_input = _input(shader, \"Base Color\")
+    alpha_input = _input(shader, \"Alpha\")
+    shader_output = _output(shader, \"BSDF\")
+    surface_input = _input(output, \"Surface\")
+
+    if uv_output and mapping_input:
+        links.new(uv_output, mapping_input)
+    if mapping_output and image_input:
+        links.new(mapping_output, image_input)
+    if color_output and base_color_input:
+        links.new(color_output, base_color_input)
+    if alpha_output and alpha_input:
+        links.new(alpha_output, alpha_input)
+    if shader_output and surface_input:
+        links.new(shader_output, surface_input)
+
+    if config[\"has_alpha\"]:
+        _try_set(material, \"surface_render_method\", \"BLENDED\")
+        _try_set(material, \"blend_method\", \"BLEND\")
+        _try_set(material, \"use_transparency_overlap\", False)
+        _try_set(material, \"show_transparent_back\", False)
+
+    location = mapping.inputs.get(\"Location\")
+    if location is None:
+        print(f\"Mapping node has no Location input for {{material_name}}\")
+        continue
+
+    frame_count = config[\"frame_count\"]
+    frame_duration = config[\"frame_duration\"]
+    for frame_index in range(frame_count + 1):
+        location.default_value[0] = (frame_index % frame_count) / frame_count
+        location.keyframe_insert(\"default_value\", frame=1 + frame_index * frame_duration)
+
+    action = getattr(mapping.animation_data, \"action\", None)
+    if action:
+        for curve in action.fcurves:
+            for keyframe in curve.keyframe_points:
+                keyframe.interpolation = \"CONSTANT\"
+
+print(f\"Configured {{len(ANIMATED_TEXTURES)}} animated DK64 texture material(s).\")
+"""
+
+
 def _dae_mesh(
     groups: tuple[_MeshGroup, ...],
     texture_plans: tuple[_TextureExportPlan, ...],
     texture_folder: str,
+    animation_plans_by_texture: Mapping[_TextureKey, _TextureAnimationPlan] | None = None,
 ) -> Collada:
     mesh = Collada()
+    animation_plans_by_texture = animation_plans_by_texture or {}
     materials_by_symbol = _dae_materials_by_symbol(
         mesh,
         texture_plans,
         texture_folder,
+        animation_plans_by_texture,
     )
     geometry_nodes = list()
 
     for group_index, group in enumerate(groups):
         if not group.vertices or not group.triangles:
             continue
-        geom = _dae_geometry_for_group(mesh, group, group_index)
+        animation_plan = (
+            animation_plans_by_texture.get(group.texture) if group.texture else None
+        )
+        geom = _dae_geometry_for_group(mesh, group, group_index, animation_plan)
         mesh.geometries.append(geom)
         material_symbol = _dae_material_symbol(group.texture)
         material_inputs = [("TEX0", "TEXCOORD", "0")] if group.texture else []
@@ -865,11 +1236,17 @@ def _dae_materials_by_symbol(
     mesh: Collada,
     texture_plans: tuple[_TextureExportPlan, ...],
     texture_folder: str,
+    animation_plans_by_texture: Mapping[_TextureKey, _TextureAnimationPlan],
 ) -> dict[str, collada_material.Material]:
     materials = {"vertex-material": _dae_vertex_material(mesh)}
     for texture_plan in texture_plans:
         symbol = texture_plan.texture.material_name
-        materials[symbol] = _dae_texture_material(mesh, texture_plan, texture_folder)
+        materials[symbol] = _dae_texture_material(
+            mesh,
+            texture_plan,
+            texture_folder,
+            animation_plans_by_texture.get(texture_plan.texture),
+        )
     return materials
 
 
@@ -893,22 +1270,38 @@ def _dae_texture_material(
     mesh: Collada,
     texture_plan: _TextureExportPlan,
     texture_folder: str,
+    animation_plan: _TextureAnimationPlan | None = None,
 ) -> collada_material.Material:
     texture = texture_plan.texture
+    texture_filename = (
+        _animation_atlas_filename(animation_plan)
+        if animation_plan is not None
+        else texture.image_filename
+    )
+    alpha_filename = (
+        _animation_alpha_mask_filename(animation_plan)
+        if animation_plan is not None
+        else _alpha_mask_filename(texture)
+    )
+    transparency_level = (
+        animation_plan.atlas_level
+        if animation_plan is not None
+        else texture_plan.levels[0]
+    )
     color_map, params = _dae_texture_map(
         mesh,
         texture.material_name,
-        _dae_texture_path(texture_folder, texture.image_filename),
+        _dae_texture_path(texture_folder, texture_filename),
         texture,
     )
-    has_transparency = _texture_level_has_transparency(texture_plan.levels[0])
+    has_transparency = _texture_level_has_transparency(transparency_level)
     transparent = None
     transparency = None
     if has_transparency:
         alpha_map, alpha_params = _dae_texture_map(
             mesh,
             f"{texture.material_name}-alpha",
-            _dae_texture_path(texture_folder, _alpha_mask_filename(texture)),
+            _dae_texture_path(texture_folder, alpha_filename),
             texture,
         )
         params.extend(alpha_params)
@@ -972,6 +1365,7 @@ def _dae_geometry_for_group(
     mesh: Collada,
     group: _MeshGroup,
     group_index: int,
+    animation_plan: _TextureAnimationPlan | None = None,
 ) -> collada_geometry.Geometry:
     geom_id = f"geometry{group_index}"
     vertices = list()
@@ -990,7 +1384,10 @@ def _dae_geometry_for_group(
             )
         )
         if group.texture is not None:
-            texcoords.extend(_uv_for_vertex(vertex, group.texture))
+            u, v = _uv_for_vertex(vertex, group.texture)
+            if animation_plan is not None:
+                u /= animation_plan.frame_count
+            texcoords.extend((u, v))
 
     for tri in group.triangles:
         triangles.extend((tri.v1, tri.v2, tri.v3))

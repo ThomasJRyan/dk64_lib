@@ -467,6 +467,117 @@ class TextureExportTest(unittest.TestCase):
             dae_data,
         )
 
+    def test_dae_exporter_can_stitch_animated_texture_frames(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            ),
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 255, 0, 0)
+                    + _rgba16(255, 0, 255)
+                    + _rgba16(0, 255, 255)
+                    + _rgba16(0, 0, 0)
+                )
+            ),
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+        )
+
+        export = TexturedDaeExporter(texture_data).export(
+            [display_list],
+            animated_texture_frames={0: [0, 1]},
+            animation_frame_duration=3,
+        )
+
+        self.assertEqual(
+            [image.filename for image in export.images],
+            [
+                "textures/tex_0_pal_none_f0_s2_2x2_anim_2frames.png",
+                "textures/tex_0_pal_none_f0_s2_2x2_anim_2frames_alpha.png",
+            ],
+        )
+        atlas_size, atlas_pixels = _png_rgba(export.images[0].data)
+        self.assertEqual(atlas_size, (4, 2))
+        self.assertEqual(
+            atlas_pixels[: 4 * 4],
+            bytes(
+                (
+                    255,
+                    0,
+                    0,
+                    255,
+                    0,
+                    255,
+                    0,
+                    255,
+                    255,
+                    255,
+                    0,
+                    0,
+                    255,
+                    0,
+                    255,
+                    255,
+                )
+            ),
+        )
+        self.assertEqual(
+            [image.path for image in export.dae.images],
+            [
+                "textures/tex_0_pal_none_f0_s2_2x2_anim_2frames.png",
+                "textures/tex_0_pal_none_f0_s2_2x2_anim_2frames_alpha.png",
+            ],
+        )
+        self.assertEqual(
+            [support_file.filename for support_file in export.support_files],
+            ["animated_textures.blender.py"],
+        )
+        blender_script = export.support_files[0].data
+        self.assertIn("'tex_0_pal_none_f0_s2_2x2'", blender_script)
+        self.assertIn("'frame_count': 2", blender_script)
+        self.assertIn("'frame_duration': 3", blender_script)
+        self.assertIn("'has_alpha': True", blender_script)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dae_path = Path(tmpdir) / "model.dae"
+            export.dae.write(dae_path)
+            dae_data = dae_path.read_text()
+
+        self.assertIn(
+            "textures/tex_0_pal_none_f0_s2_2x2_anim_2frames.png",
+            dae_data,
+        )
+        self.assertIn(
+            '<texture texture="tex_0_pal_none_f0_s2_2x2-sampler" '
+            'texcoord="TEX0"',
+            dae_data,
+        )
+        self.assertIn("0.5", dae_data)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            written_paths = save_textured_dae_export(export, "model.dae", tmpdir)
+            self.assertEqual(
+                [path.name for path in written_paths],
+                [
+                    "model.dae",
+                    "tex_0_pal_none_f0_s2_2x2_anim_2frames.png",
+                    "tex_0_pal_none_f0_s2_2x2_anim_2frames_alpha.png",
+                    "animated_textures.blender.py",
+                ],
+            )
+            self.assertTrue((Path(tmpdir) / "animated_textures.blender.py").exists())
+
     def test_gltf_exporter_writes_textured_materials_and_alpha(self):
         texture_data = [
             SimpleNamespace(

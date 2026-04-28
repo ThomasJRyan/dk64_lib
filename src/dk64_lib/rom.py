@@ -9,6 +9,7 @@ from re import sub
 from typing import Literal, Generator
 
 from dk64_lib.data_types import TextureData, TextData, CutsceneData, GeometryData
+from dk64_lib.f3dex2.texture_export import TextureAnimationFrames
 from dk64_lib.constants import MAPS
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
@@ -187,6 +188,8 @@ class Rom:
         folderpath: str | Path = "exports/geometries",
         include_textures: bool = True,
         geometry_format: Literal["obj", "dae", "gltf", "glb"] = "glb",
+        animated_texture_frames: TextureAnimationFrames | None = None,
+        animation_frame_duration: int = 4,
     ) -> list[Path]:
         """Export geometry tables as GLB, OBJ, DAE, or glTF files."""
         geometry_saver_names = {
@@ -217,10 +220,18 @@ class Rom:
 
             geometry_path = root / f"{filename_stem}.{geometry_format}"
             save_geometry = getattr(geometry_data, save_geometry_name)
+            save_kwargs = {"include_textures": include_textures}
+            if geometry_format == "dae" and animated_texture_frames is not None:
+                save_kwargs.update(
+                    {
+                        "animated_texture_frames": animated_texture_frames,
+                        "animation_frame_duration": animation_frame_duration,
+                    }
+                )
             written_paths = save_geometry(
                 geometry_path.name,
                 str(root),
-                include_textures=include_textures,
+                **save_kwargs,
             )
             exported_paths.extend(written_paths)
 
@@ -262,14 +273,26 @@ class Rom:
         include_textures: bool = True,
         include_assets: bool = True,
         geometry_format: Literal["obj", "dae", "gltf", "glb"] = "glb",
+        animated_texture_frames: TextureAnimationFrames | None = None,
+        animation_frame_duration: int = 4,
     ) -> dict[str, list[Path]]:
         """Export all currently supported ROM data to organized folders."""
         root = Path(folderpath)
+        geometry_kwargs = {
+            "include_textures": include_textures,
+            "geometry_format": geometry_format,
+        }
+        if animated_texture_frames is not None:
+            geometry_kwargs.update(
+                {
+                    "animated_texture_frames": animated_texture_frames,
+                    "animation_frame_duration": animation_frame_duration,
+                }
+            )
         exported = {
             "geometries": self.export_geometries(
                 root / "geometries",
-                include_textures=include_textures,
-                geometry_format=geometry_format,
+                **geometry_kwargs,
             ),
             "textures": self.export_textures(root / "textures"),
             "text": self.export_text(root / "text"),
