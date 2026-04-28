@@ -879,10 +879,21 @@ def _test_ci4_64x32_mipmap_export_for_texture(
     base_height: int,
     base_rgba: bytes,
 ) -> list[pathlib.Path]:
+    level1_width, level1_height = max(1, width // 2), max(1, height // 2)
+    level1_start_pixel = width * height
     level0_rgba = _swap_odd_rows_rgba(
         _slice_flat_rgba(base_rgba, 0, width, height),
         source_width=width,
         group_pixels=16,
+    )
+    level1_rgba = _slice_sparse_paired_rows_rgba(
+        base_rgba,
+        start_pixel=level1_start_pixel,
+        output_width=level1_width,
+        output_height=level1_height,
+        source_group_pixels=width,
+        skipped_pixels=0,
+        swap_second_row_group_pixels=8,
     )
     return _write_test_mipmap_outputs(
         folderpath,
@@ -895,6 +906,7 @@ def _test_ci4_64x32_mipmap_export_for_texture(
         (
             ("base", base_width, base_height, base_rgba),
             (None, width, height, level0_rgba),
+            (1, level1_width, level1_height, level1_rgba),
         ),
     )
 

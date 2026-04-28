@@ -730,7 +730,7 @@ class TextureExportTest(unittest.TestCase):
                 _indexed_rgba(3, 4, 1, 2),
             )
 
-    def test_test_mipmap_export_writes_ci4_64x32_base_only(self):
+    def test_test_mipmap_export_writes_ci4_64x32_candidates(self):
         palette = b"".join(_rgba16(value, value, value) for value in range(0, 256, 17))
         base_pixels = tuple(range(16)) * 172
         texture_data = [SimpleNamespace(raw_data=b"") for index in range(210)]
@@ -755,10 +755,12 @@ class TextureExportTest(unittest.TestCase):
                 [
                     "tex_208_pal_209_f2_s0_64x32_base_64x43.png",
                     "tex_208_pal_209_f2_s0_64x32.png",
+                    "tex_208_pal_209_f2_s0_64x32_mip1_32x16.png",
                 ],
             )
             self.assertEqual(_png_rgba(filepaths[0].read_bytes())[0], (64, 43))
             self.assertEqual(_png_rgba(filepaths[1].read_bytes())[0], (64, 32))
+            self.assertEqual(_png_rgba(filepaths[2].read_bytes())[0], (32, 16))
 
     def test_save_textured_obj_export_writes_assets(self):
         texture_data = [SimpleNamespace(raw_data=_rgba16(255, 0, 0))]
