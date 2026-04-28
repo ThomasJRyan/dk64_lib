@@ -72,7 +72,7 @@ The current state tracker pays attention to these commands:
    * - ``G_SETTILE``
      - Records a tile descriptor: ``fmt``, ``size``, line stride, TMEM address,
        palette number, clamp/mirror bits, masks, and shifts. The exporter
-       currently uses the format, size, tile, and palette information.
+       currently uses the format, size, tile, palette, and clamp information.
    * - ``G_SETTILESIZE``
      - Records the tile dimensions. F3DEX2 tile coordinates are quarter-texel
        values, so export computes ``width = abs(lrs - uls) / 4 + 1`` and the
@@ -193,8 +193,10 @@ The OBJ UV conversion is:
 
 Important details:
 
-* Coordinates are not clamped. Values outside ``0..1`` are preserved so normal
-  texture wrapping/repeating can still work in import tools.
+* Coordinates are clamped to ``0..1`` only when the active ``G_SETTILE`` state
+  has the N64 clamp bit set for that axis. Otherwise values outside ``0..1``
+  are preserved so normal texture wrapping/repeating can still work in import
+  tools.
 * OBJ's vertical texture axis is inverted relative to the convention used by
   the source data, so the exporter writes ``1 - v``.
 * Texture width and height come from the active ``G_SETTILESIZE`` command, not
@@ -235,6 +237,31 @@ The MTL file creates one material per unique texture key:
    d 1.000000
    illum 1
    map_Kd textures/tex_158_pal_159_f2_s1_32x32.png
+
+If the decoded highest-resolution texture contains any transparent pixels, the
+exporter also writes an alpha map using the same PNG. Blender's OBJ importer
+uses ``map_d`` to connect image alpha to the imported material's alpha input.
+
+.. code-block:: text
+
+   newmtl tex_0_pal_none_f0_s2_2x2
+   Ka 1.000000 1.000000 1.000000
+   Kd 1.000000 1.000000 1.000000
+   Ks 0.000000 0.000000 0.000000
+   d 1.000000
+   illum 4
+   map_Kd textures/tex_0_pal_none_f0_s2_2x2.png
+   map_d textures/tex_0_pal_none_f0_s2_2x2.png
+
+If either texture axis is clamped by ``G_SETTILE``, the material name is
+suffixed with ``_clamp_s``, ``_clamp_t``, or ``_clamp_st``. The MTL texture map
+statements also include the standard Wavefront ``-clamp on`` option as a hint
+for importers that honor it:
+
+.. code-block:: text
+
+   newmtl tex_0_pal_none_f0_s2_2x2_clamp_st
+   map_Kd -clamp on textures/tex_0_pal_none_f0_s2_2x2_clamp_st.png
 
 When a packed mipmap texture is detected, the exporter writes all decoded mip
 levels as PNG files, but ``map_Kd`` points at the highest-resolution level. For
@@ -576,8 +603,12 @@ The current exporter is intentionally conservative:
 * It parses ``G_TEXTURE`` scale fields but does not currently apply them to OBJ
   UVs.
 * It writes RGB vertex colors to OBJ but does not write vertex alpha.
-* Texture clamp, mirror, mask, and shift fields are parsed in ``G_SETTILE`` but
-  are not currently translated into OBJ/MTL behavior.
+* Texture clamp fields are translated to clamped OBJ UVs and ``-clamp on`` MTL
+  texture map hints. Mirror, mask, and shift fields are parsed in
+  ``G_SETTILE`` but are not currently translated into OBJ/MTL behavior.
+* OBJ/MTL importer support for ``-clamp on`` varies. The exporter emits it
+  because it is part of the Wavefront material syntax, but clamped UVs are the
+  compatibility fallback.
 * Unsupported formats fall back to a placeholder image instead of failing the
   export.
 

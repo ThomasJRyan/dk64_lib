@@ -26,8 +26,18 @@ def _g_texture(level: int, tile: int = 0, on: int = 1) -> bytes:
     )
 
 
-def _settile(fmt: int, size: int, tile: int, tmem: int = 0) -> bytes:
-    return _words(0xF5000000 | (fmt << 21) | (size << 19) | tmem, tile << 24)
+def _settile(
+    fmt: int,
+    size: int,
+    tile: int,
+    tmem: int = 0,
+    cm_s: int = 0,
+    cm_t: int = 0,
+) -> bytes:
+    return _words(
+        0xF5000000 | (fmt << 21) | (size << 19) | tmem,
+        (tile << 24) | (cm_t << 18) | (cm_s << 8),
+    )
 
 
 def _settilesize(tile: int, width: int, height: int) -> bytes:
@@ -226,8 +236,81 @@ class TextureExportTest(unittest.TestCase):
         self.assertIn("usemtl tex_0_pal_none_f0_s2_2x2", export.obj_data)
         self.assertIn("f 1/1 2/2 3/3", export.obj_data)
         self.assertIn("map_Kd textures/tex_0_pal_none_f0_s2_2x2.png", export.mtl_data)
+        self.assertNotIn("map_d", export.mtl_data)
         self.assertEqual(len(export.images), 1)
         self.assertTrue(export.images[0].data.startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_exporter_writes_alpha_map_for_transparent_texture(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+        )
+
+        export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
+
+        self.assertIn("illum 4", export.mtl_data)
+        self.assertIn("map_Kd textures/tex_0_pal_none_f0_s2_2x2.png", export.mtl_data)
+        self.assertIn("map_d textures/tex_0_pal_none_f0_s2_2x2.png", export.mtl_data)
+
+    def test_exporter_emits_clamp_hint_and_clamps_uvs_for_clamped_tile(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        vertex_data = (
+            _vertex(0, 0, 0, -32, -32)
+            + _vertex(1, 0, 0, 96, -32)
+            + _vertex(0, 1, 0, -32, 96)
+        )
+        commands = b"".join(
+            (
+                _g_texture(level=1),
+                _words(0xFD100000, 0x00000000),
+                _settile(fmt=0, size=2, tile=0, cm_s=2, cm_t=2),
+                _words(0xF3000000, 0x07000000),
+                _settilesize(tile=0, width=2, height=2),
+                b"\x01\x00\x30\x06\x00\x00\x00\x00",
+                b"\x05\x00\x02\x04\x00\x00\x00\x00",
+                b"\xdf\x00\x00\x00\x00\x00\x00\x00",
+            )
+        )
+        display_list = DisplayList(
+            raw_data=commands,
+            raw_vertex_data=vertex_data,
+            vertex_pointer=0,
+            offset=0,
+        )
+
+        export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
+
+        self.assertIn("usemtl tex_0_pal_none_f0_s2_2x2_clamp_st", export.obj_data)
+        self.assertIn("vt 0.00000000 1.00000000", export.obj_data)
+        self.assertIn("vt 1.00000000 1.00000000", export.obj_data)
+        self.assertIn("vt 0.00000000 0.00000000", export.obj_data)
+        self.assertIn(
+            "map_Kd -clamp on textures/tex_0_pal_none_f0_s2_2x2_clamp_st.png",
+            export.mtl_data,
+        )
+        self.assertNotIn("map_d", export.mtl_data)
 
     def test_exporter_uses_texture_command_tile_without_exporting_mip_levels(self):
         texture_data = [

@@ -39,6 +39,8 @@ class _TileDescriptor:
     line: int
     tmem: int
     palette: int
+    clamp_s: bool
+    clamp_t: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,14 +51,23 @@ class _TextureKey:
     size: int
     width: int
     height: int
+    clamp_s: bool = False
+    clamp_t: bool = False
 
     @property
     def material_name(self) -> str:
         palette = "none" if self.palette_index is None else str(self.palette_index)
-        return (
+        name = (
             f"tex_{self.image_index}_pal_{palette}_"
             f"f{self.fmt}_s{self.size}_{self.width}x{self.height}"
         )
+        if self.clamp_s and self.clamp_t:
+            return f"{name}_clamp_st"
+        if self.clamp_s:
+            return f"{name}_clamp_s"
+        if self.clamp_t:
+            return f"{name}_clamp_t"
+        return name
 
     @property
     def image_filename(self) -> str:
@@ -69,6 +80,12 @@ class _DecodedTextureLevel:
     width: int
     height: int
     rgba: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class _TextureExportPlan:
+    texture: _TextureKey
+    levels: tuple[_DecodedTextureLevel, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +144,8 @@ class _TextureState:
                 line=command.line,
                 tmem=command.tmem,
                 palette=command.palette,
+                clamp_s=bool(command.cm_s & 0x2),
+                clamp_t=bool(command.cm_t & 0x2),
             )
             return
 
@@ -166,6 +185,8 @@ class _TextureState:
             size=descriptor.size,
             width=dimensions[0],
             height=dimensions[1],
+            clamp_s=descriptor.clamp_s,
+            clamp_t=descriptor.clamp_t,
         )
 
 
@@ -185,14 +206,18 @@ class TexturedObjExporter:
             for texture in dict.fromkeys(group.texture for group in groups)
             if texture
         )
+        texture_plans = tuple(
+            _TextureExportPlan(texture, self._decoded_texture_levels(texture))
+            for texture in textures
+        )
         images = tuple(
             image
-            for texture in textures
-            for image in self._texture_images(texture, texture_folder)
+            for texture_plan in texture_plans
+            for image in self._texture_images(texture_plan, texture_folder)
         )
         return TexturedObjExport(
             obj_data=self._obj_data(groups, mtl_filename),
-            mtl_data=self._mtl_data(textures, texture_folder),
+            mtl_data=self._mtl_data(texture_plans, texture_folder),
             images=images,
         )
 
@@ -315,9 +340,15 @@ class TexturedObjExporter:
 
         return "\n".join(lines)
 
-    def _mtl_data(self, textures: tuple[_TextureKey, ...], texture_folder: str) -> str:
+    def _mtl_data(
+        self,
+        texture_plans: tuple[_TextureExportPlan, ...],
+        texture_folder: str,
+    ) -> str:
         lines: list[str] = []
-        for texture in textures:
+        for texture_plan in texture_plans:
+            texture = texture_plan.texture
+            has_transparency = _texture_level_has_transparency(texture_plan.levels[0])
             lines.extend(
                 (
                     f"newmtl {texture.material_name}",
@@ -325,24 +356,29 @@ class TexturedObjExporter:
                     "Kd 1.000000 1.000000 1.000000",
                     "Ks 0.000000 0.000000 0.000000",
                     "d 1.000000",
-                    "illum 1",
-                    f"map_Kd {texture_folder}/{texture.image_filename}",
-                    "",
+                    "illum 4" if has_transparency else "illum 1",
+                    _mtl_texture_map_statement("map_Kd", texture, texture_folder),
                 )
             )
+            if has_transparency:
+                lines.append(
+                    _mtl_texture_map_statement("map_d", texture, texture_folder)
+                )
+            lines.append("")
         return "\n".join(lines)
 
     def _texture_images(
         self,
-        texture: _TextureKey,
+        texture_plan: _TextureExportPlan,
         texture_folder: str,
     ) -> tuple[TextureImageFile, ...]:
+        texture = texture_plan.texture
         return tuple(
             TextureImageFile(
                 filename=f"{texture_folder}/{_texture_level_filename(texture, level)}",
                 data=rgba_to_png(level.width, level.height, level.rgba),
             )
-            for level in self._decoded_texture_levels(texture)
+            for level in texture_plan.levels
         )
 
     def _decoded_texture_levels(
@@ -455,6 +491,19 @@ def _texture_level_filename(
     if level.level is None:
         return texture.image_filename
     return f"{texture.material_name}_mip{level.level}_{level.width}x{level.height}.png"
+
+
+def _texture_level_has_transparency(level: _DecodedTextureLevel) -> bool:
+    return any(alpha < 255 for alpha in level.rgba[3::4])
+
+
+def _mtl_texture_map_statement(
+    map_name: str,
+    texture: _TextureKey,
+    texture_folder: str,
+) -> str:
+    options = " -clamp on" if texture.clamp_s or texture.clamp_t else ""
+    return f"{map_name}{options} {texture_folder}/{texture.image_filename}"
 
 
 def _decode_packed_mipmap_levels(
@@ -1688,7 +1737,15 @@ def _tile_dimensions(command: commands.G_SETTILESIZE) -> tuple[int, int]:
 def _uv_for_vertex(vertex: Vertex, texture: _TextureKey) -> tuple[float, float]:
     u = _signed_16(vertex.texture_cord_u) / 32 / texture.width
     v = 1 - (_signed_16(vertex.texture_cord_v) / 32 / texture.height)
+    if texture.clamp_s:
+        u = _clamp_unit(u)
+    if texture.clamp_t:
+        v = _clamp_unit(v)
     return u, v
+
+
+def _clamp_unit(value: float) -> float:
+    return max(0.0, min(1.0, value))
 
 
 def _signed_16(value: int) -> int:
