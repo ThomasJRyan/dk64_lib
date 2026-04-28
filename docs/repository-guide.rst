@@ -23,7 +23,7 @@ Top-Level Layout
 ``docs/``
     Sphinx documentation source and generated documentation build output.
     ``docs/textured-geometry.rst`` is the primary narrative reference for OBJ,
-    DAE, UV, texture, and packed mipmap export behavior.
+    glTF/GLB, DAE, UV, texture, and packed mipmap export behavior.
 
 Library Modules
 ---------------
@@ -36,8 +36,8 @@ Library Modules
     ``BaseData`` and add format-specific parsing where available.
 
 ``dk64_lib.f3dex2``
-    F3DEX2 display-list command parsing plus textured OBJ and DAE export
-    helpers.
+    F3DEX2 display-list command parsing plus textured OBJ, glTF/GLB, and DAE
+    export helpers.
 
 ``dk64_lib.components``
     Small geometry value objects such as vertices and triangles.

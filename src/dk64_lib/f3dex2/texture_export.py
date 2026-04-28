@@ -1,4 +1,5 @@
 import binascii
+import json
 import math
 import pathlib
 import struct
@@ -42,6 +43,19 @@ class TexturedObjExport:
 class TexturedDaeExport:
     dae: Collada
     images: tuple[TextureImageFile, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TexturedGltfExport:
+    gltf_data: str
+    binary_filename: str
+    binary_data: bytes
+    images: tuple[TextureImageFile, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TexturedGlbExport:
+    data: bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,14 +412,27 @@ class TexturedObjExporter:
         texture_plan: _TextureExportPlan,
         texture_folder: str,
     ) -> tuple[TextureImageFile, ...]:
+        return self._texture_level_images(
+            texture_plan,
+            texture_folder,
+        ) + self._alpha_mask_image(texture_plan, texture_folder)
+
+    def _texture_level_images(
+        self,
+        texture_plan: _TextureExportPlan,
+        texture_folder: str,
+    ) -> tuple[TextureImageFile, ...]:
         texture = texture_plan.texture
         return tuple(
             TextureImageFile(
-                filename=f"{texture_folder}/{_texture_level_filename(texture, level)}",
+                filename=_texture_asset_filename(
+                    texture_folder,
+                    _texture_level_filename(texture, level),
+                ),
                 data=rgba_to_png(level.width, level.height, level.rgba),
             )
             for level in texture_plan.levels
-        ) + self._alpha_mask_image(texture_plan, texture_folder)
+        )
 
     def _alpha_mask_image(
         self,
@@ -417,7 +444,10 @@ class TexturedObjExporter:
             return tuple()
         return (
             TextureImageFile(
-                filename=f"{texture_folder}/{_alpha_mask_filename(texture_plan.texture)}",
+                filename=_texture_asset_filename(
+                    texture_folder,
+                    _alpha_mask_filename(texture_plan.texture),
+                ),
                 data=rgba_to_png(
                     base_level.width,
                     base_level.height,
@@ -482,6 +512,90 @@ class TexturedDaeExporter(TexturedObjExporter):
             dae=_dae_mesh(groups, texture_plans, texture_folder),
             images=images,
         )
+
+
+class TexturedGltfExporter(TexturedObjExporter):
+    def export(
+        self,
+        display_lists: Iterable[object],
+        binary_filename: str = "geometry.bin",
+        texture_folder: str = "textures",
+        include_textures: bool = True,
+    ) -> TexturedGltfExport:
+        groups, texture_plans = self._groups_and_texture_plans(
+            display_lists,
+            include_textures,
+        )
+        images = tuple(
+            image
+            for texture_plan in texture_plans
+            for image in self._texture_level_images(texture_plan, texture_folder)
+        )
+        gltf, binary_data = _gltf_mesh(
+            groups,
+            texture_plans,
+            binary_filename,
+            texture_folder,
+            embedded_images=tuple(),
+        )
+        return TexturedGltfExport(
+            gltf_data=_gltf_json(gltf),
+            binary_filename=binary_filename,
+            binary_data=binary_data,
+            images=images,
+        )
+
+    def export_glb(
+        self,
+        display_lists: Iterable[object],
+        include_textures: bool = True,
+    ) -> TexturedGlbExport:
+        groups, texture_plans = self._groups_and_texture_plans(
+            display_lists,
+            include_textures,
+        )
+        embedded_images = tuple(
+            image
+            for texture_plan in texture_plans
+            for image in self._texture_level_images(texture_plan, "")
+            if "_mip" not in image.filename
+        )
+        gltf, binary_data = _gltf_mesh(
+            groups,
+            texture_plans,
+            binary_filename=None,
+            texture_folder="",
+            embedded_images=embedded_images,
+        )
+        return TexturedGlbExport(data=_glb_data(gltf, binary_data))
+
+    def _groups_and_texture_plans(
+        self,
+        display_lists: Iterable[object],
+        include_textures: bool,
+    ) -> tuple[tuple[_MeshGroup, ...], tuple[_TextureExportPlan, ...]]:
+        groups = tuple(self._iter_mesh_groups(display_lists))
+        if not include_textures:
+            return tuple(
+                _MeshGroup(
+                    group.vertices,
+                    group.triangles,
+                    None,
+                    group.display_list_offset,
+                )
+                for group in groups
+            ), tuple()
+
+        textures = tuple(
+            texture
+            for texture in dict.fromkeys(group.texture for group in groups)
+            if texture
+        )
+        texture_plans = tuple(
+            _TextureExportPlan(texture, self._decoded_texture_levels(texture))
+            for texture in textures
+        )
+        return groups, texture_plans
 
 
 def decode_texture(
@@ -582,6 +696,41 @@ def save_textured_dae_export(
     return written_paths
 
 
+def save_textured_gltf_export(
+    export: TexturedGltfExport,
+    gltf_filename: str,
+    folderpath: str = ".",
+) -> list[pathlib.Path]:
+    folder = pathlib.Path(folderpath)
+    gltf_path = folder / gltf_filename
+    gltf_path.parent.mkdir(parents=True, exist_ok=True)
+    gltf_path.write_text(export.gltf_data)
+
+    bin_path = gltf_path.parent / export.binary_filename
+    bin_path.write_bytes(export.binary_data)
+    written_paths = [gltf_path, bin_path]
+
+    for image in export.images:
+        image_path = folder / image.filename
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        image_path.write_bytes(image.data)
+        written_paths.append(image_path)
+
+    return written_paths
+
+
+def save_textured_glb_export(
+    export: TexturedGlbExport,
+    glb_filename: str,
+    folderpath: str = ".",
+) -> list[pathlib.Path]:
+    folder = pathlib.Path(folderpath)
+    glb_path = folder / glb_filename
+    glb_path.parent.mkdir(parents=True, exist_ok=True)
+    glb_path.write_bytes(export.data)
+    return [glb_path]
+
+
 def _texture_level_filename(
     texture: _TextureKey,
     level: _DecodedTextureLevel,
@@ -589,6 +738,12 @@ def _texture_level_filename(
     if level.level is None:
         return texture.image_filename
     return f"{texture.material_name}_mip{level.level}_{level.width}x{level.height}.png"
+
+
+def _texture_asset_filename(texture_folder: str, filename: str) -> str:
+    if not texture_folder:
+        return filename
+    return pathlib.PurePosixPath(texture_folder, filename).as_posix()
 
 
 def _alpha_mask_filename(texture: _TextureKey) -> str:
@@ -878,6 +1033,386 @@ def _dae_material_symbol(texture: _TextureKey | None) -> str:
     if texture is None:
         return "vertex-material"
     return texture.material_name
+
+
+_GLTF_ARRAY_BUFFER = 34962
+_GLTF_ELEMENT_ARRAY_BUFFER = 34963
+_GLTF_FLOAT = 5126
+_GLTF_UNSIGNED_SHORT = 5123
+_GLTF_UNSIGNED_INT = 5125
+_GLTF_TRIANGLES = 4
+_GLTF_REPEAT = 10497
+_GLTF_CLAMP_TO_EDGE = 33071
+
+
+class _GltfBinaryBuilder:
+    def __init__(self):
+        self.data = bytearray()
+        self.buffer_views: list[dict[str, object]] = []
+
+    def add_view(self, payload: bytes, target: int | None = None) -> int:
+        _pad_bytearray(self.data)
+        view = {
+            "buffer": 0,
+            "byteOffset": len(self.data),
+            "byteLength": len(payload),
+        }
+        if target is not None:
+            view["target"] = target
+        self.data.extend(payload)
+        self.buffer_views.append(view)
+        return len(self.buffer_views) - 1
+
+    def to_bytes(self) -> bytes:
+        _pad_bytearray(self.data)
+        return bytes(self.data)
+
+
+def _gltf_mesh(
+    groups: tuple[_MeshGroup, ...],
+    texture_plans: tuple[_TextureExportPlan, ...],
+    binary_filename: str | None,
+    texture_folder: str,
+    embedded_images: tuple[TextureImageFile, ...],
+) -> tuple[dict[str, object], bytes]:
+    binary = _GltfBinaryBuilder()
+    gltf: dict[str, object] = {
+        "asset": {
+            "version": "2.0",
+            "generator": "dk64_lib",
+        },
+        "extensionsUsed": ["KHR_materials_unlit"],
+        "scene": 0,
+        "scenes": [{"nodes": []}],
+        "nodes": [],
+        "meshes": [],
+        "materials": [_gltf_vertex_material()],
+    }
+    material_indices: dict[_TextureKey | None, int] = {None: 0}
+    _gltf_add_texture_materials(
+        gltf,
+        binary,
+        texture_plans,
+        texture_folder,
+        embedded_images,
+        material_indices,
+    )
+
+    for group_index, group in enumerate(groups):
+        if not group.vertices or not group.triangles:
+            continue
+        material_index = material_indices.get(group.texture, 0)
+        mesh_index = _gltf_add_mesh(gltf, binary, group, group_index, material_index)
+        node_index = _gltf_append(
+            gltf,
+            "nodes",
+            {
+                "name": f"mesh_group_{group_index}",
+                "mesh": mesh_index,
+            },
+        )
+        gltf["scenes"][0]["nodes"].append(node_index)
+
+    binary_data = binary.to_bytes()
+    gltf["buffers"] = [{"byteLength": len(binary_data)}]
+    if binary_filename is not None:
+        gltf["buffers"][0]["uri"] = pathlib.PurePosixPath(binary_filename).as_posix()
+    if binary.buffer_views:
+        gltf["bufferViews"] = binary.buffer_views
+    return gltf, binary_data
+
+
+def _gltf_vertex_material() -> dict[str, object]:
+    return {
+        "name": "vertex-material",
+        "doubleSided": True,
+        "pbrMetallicRoughness": {
+            "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
+            "metallicFactor": 0.0,
+            "roughnessFactor": 1.0,
+        },
+        "extensions": {"KHR_materials_unlit": {}},
+    }
+
+
+def _gltf_add_texture_materials(
+    gltf: dict[str, object],
+    binary: _GltfBinaryBuilder,
+    texture_plans: tuple[_TextureExportPlan, ...],
+    texture_folder: str,
+    embedded_images: tuple[TextureImageFile, ...],
+    material_indices: dict[_TextureKey | None, int],
+) -> None:
+    embedded_images_by_name = {
+        pathlib.PurePosixPath(image.filename).name: image for image in embedded_images
+    }
+    for texture_plan in texture_plans:
+        texture = texture_plan.texture
+        image_index = _gltf_add_image(
+            gltf,
+            binary,
+            texture,
+            texture_folder,
+            embedded_images_by_name,
+        )
+        sampler_index = _gltf_append(gltf, "samplers", _gltf_sampler(texture))
+        texture_index = _gltf_append(
+            gltf,
+            "textures",
+            {
+                "name": texture.material_name,
+                "source": image_index,
+                "sampler": sampler_index,
+            },
+        )
+        material_indices[texture] = _gltf_append(
+            gltf,
+            "materials",
+            _gltf_texture_material(texture_plan, texture_index),
+        )
+
+
+def _gltf_add_image(
+    gltf: dict[str, object],
+    binary: _GltfBinaryBuilder,
+    texture: _TextureKey,
+    texture_folder: str,
+    embedded_images_by_name: dict[str, TextureImageFile],
+) -> int:
+    image = {
+        "name": texture.material_name,
+    }
+    embedded_image = embedded_images_by_name.get(texture.image_filename)
+    if embedded_image is None:
+        image["uri"] = _texture_asset_filename(texture_folder, texture.image_filename)
+    else:
+        image["bufferView"] = binary.add_view(embedded_image.data)
+        image["mimeType"] = "image/png"
+    return _gltf_append(gltf, "images", image)
+
+
+def _gltf_sampler(texture: _TextureKey) -> dict[str, int]:
+    return {
+        "wrapS": _GLTF_CLAMP_TO_EDGE if texture.clamp_s else _GLTF_REPEAT,
+        "wrapT": _GLTF_CLAMP_TO_EDGE if texture.clamp_t else _GLTF_REPEAT,
+    }
+
+
+def _gltf_texture_material(
+    texture_plan: _TextureExportPlan,
+    texture_index: int,
+) -> dict[str, object]:
+    material: dict[str, object] = {
+        "name": texture_plan.texture.material_name,
+        "doubleSided": True,
+        "pbrMetallicRoughness": {
+            "baseColorTexture": {
+                "index": texture_index,
+                "texCoord": 0,
+            },
+            "metallicFactor": 0.0,
+            "roughnessFactor": 1.0,
+        },
+        "extensions": {"KHR_materials_unlit": {}},
+    }
+    if _texture_level_has_transparency(texture_plan.levels[0]):
+        material["alphaMode"] = "BLEND"
+    return material
+
+
+def _gltf_add_mesh(
+    gltf: dict[str, object],
+    binary: _GltfBinaryBuilder,
+    group: _MeshGroup,
+    group_index: int,
+    material_index: int,
+) -> int:
+    attributes = {
+        "POSITION": _gltf_add_position_accessor(gltf, binary, group.vertices),
+        "COLOR_0": _gltf_add_color_accessor(gltf, binary, group.vertices),
+    }
+    if group.texture is not None:
+        attributes["TEXCOORD_0"] = _gltf_add_texcoord_accessor(
+            gltf,
+            binary,
+            group.vertices,
+            group.texture,
+        )
+
+    mesh = {
+        "name": f"mesh_group_{group_index}",
+        "primitives": [
+            {
+                "attributes": attributes,
+                "indices": _gltf_add_index_accessor(
+                    gltf,
+                    binary,
+                    group.vertices,
+                    group.triangles,
+                ),
+                "material": material_index,
+                "mode": _GLTF_TRIANGLES,
+            }
+        ],
+    }
+    return _gltf_append(gltf, "meshes", mesh)
+
+
+def _gltf_add_position_accessor(
+    gltf: dict[str, object],
+    binary: _GltfBinaryBuilder,
+    vertices: tuple[Vertex, ...],
+) -> int:
+    payload = b"".join(struct.pack("<fff", vertex.x, vertex.y, vertex.z) for vertex in vertices)
+    return _gltf_add_accessor(
+        gltf,
+        binary,
+        payload,
+        count=len(vertices),
+        component_type=_GLTF_FLOAT,
+        accessor_type="VEC3",
+        target=_GLTF_ARRAY_BUFFER,
+        minimum=[
+            float(min(vertex.x for vertex in vertices)),
+            float(min(vertex.y for vertex in vertices)),
+            float(min(vertex.z for vertex in vertices)),
+        ],
+        maximum=[
+            float(max(vertex.x for vertex in vertices)),
+            float(max(vertex.y for vertex in vertices)),
+            float(max(vertex.z for vertex in vertices)),
+        ],
+    )
+
+
+def _gltf_add_color_accessor(
+    gltf: dict[str, object],
+    binary: _GltfBinaryBuilder,
+    vertices: tuple[Vertex, ...],
+) -> int:
+    payload = b"".join(
+        struct.pack(
+            "<ffff",
+            vertex.xr / 255,
+            vertex.yg / 255,
+            vertex.zb / 255,
+            vertex.alpha / 255,
+        )
+        for vertex in vertices
+    )
+    return _gltf_add_accessor(
+        gltf,
+        binary,
+        payload,
+        count=len(vertices),
+        component_type=_GLTF_FLOAT,
+        accessor_type="VEC4",
+        target=_GLTF_ARRAY_BUFFER,
+    )
+
+
+def _gltf_add_texcoord_accessor(
+    gltf: dict[str, object],
+    binary: _GltfBinaryBuilder,
+    vertices: tuple[Vertex, ...],
+    texture: _TextureKey,
+) -> int:
+    payload = b"".join(
+        struct.pack("<ff", *_uv_for_vertex(vertex, texture)) for vertex in vertices
+    )
+    return _gltf_add_accessor(
+        gltf,
+        binary,
+        payload,
+        count=len(vertices),
+        component_type=_GLTF_FLOAT,
+        accessor_type="VEC2",
+        target=_GLTF_ARRAY_BUFFER,
+    )
+
+
+def _gltf_add_index_accessor(
+    gltf: dict[str, object],
+    binary: _GltfBinaryBuilder,
+    vertices: tuple[Vertex, ...],
+    triangles: tuple[Triangle, ...],
+) -> int:
+    use_unsigned_int = len(vertices) > 0xFFFF
+    component_type = _GLTF_UNSIGNED_INT if use_unsigned_int else _GLTF_UNSIGNED_SHORT
+    pack_format = "<I" if use_unsigned_int else "<H"
+    indices = tuple(
+        index for triangle in triangles for index in (triangle.v1, triangle.v2, triangle.v3)
+    )
+    payload = b"".join(struct.pack(pack_format, index) for index in indices)
+    return _gltf_add_accessor(
+        gltf,
+        binary,
+        payload,
+        count=len(indices),
+        component_type=component_type,
+        accessor_type="SCALAR",
+        target=_GLTF_ELEMENT_ARRAY_BUFFER,
+        minimum=[min(indices)],
+        maximum=[max(indices)],
+    )
+
+
+def _gltf_add_accessor(
+    gltf: dict[str, object],
+    binary: _GltfBinaryBuilder,
+    payload: bytes,
+    count: int,
+    component_type: int,
+    accessor_type: str,
+    target: int,
+    minimum: list[float | int] | None = None,
+    maximum: list[float | int] | None = None,
+) -> int:
+    accessor = {
+        "bufferView": binary.add_view(payload, target),
+        "byteOffset": 0,
+        "componentType": component_type,
+        "count": count,
+        "type": accessor_type,
+    }
+    if minimum is not None:
+        accessor["min"] = minimum
+    if maximum is not None:
+        accessor["max"] = maximum
+    return _gltf_append(gltf, "accessors", accessor)
+
+
+def _gltf_append(gltf: dict[str, object], key: str, value: object) -> int:
+    values = gltf.setdefault(key, [])
+    values.append(value)
+    return len(values) - 1
+
+
+def _gltf_json(gltf: dict[str, object]) -> str:
+    return json.dumps(gltf, indent=2) + "\n"
+
+
+def _glb_data(gltf: dict[str, object], binary_data: bytes) -> bytes:
+    json_chunk = _pad_bytes(_gltf_json(gltf).encode("utf-8"), b" ")
+    bin_chunk = _pad_bytes(binary_data, b"\x00")
+    total_length = 12 + 8 + len(json_chunk) + 8 + len(bin_chunk)
+    return b"".join(
+        (
+            struct.pack("<III", 0x46546C67, 2, total_length),
+            struct.pack("<I4s", len(json_chunk), b"JSON"),
+            json_chunk,
+            struct.pack("<I4s", len(bin_chunk), b"BIN\x00"),
+            bin_chunk,
+        )
+    )
+
+
+def _pad_bytearray(data: bytearray) -> None:
+    data.extend(b"\x00" * (-len(data) % 4))
+
+
+def _pad_bytes(data: bytes, padding: bytes) -> bytes:
+    return data + (padding * (-len(data) % 4))
 
 
 def _decode_packed_mipmap_levels(

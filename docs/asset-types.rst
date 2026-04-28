@@ -19,7 +19,8 @@ The high-level ROM facade currently knows these table families:
      - Current support
    * - ``1``
      - Geometry
-     - Parsed into map geometry objects and exported as OBJ/MTL/PNG or DAE/PNG files.
+     - Parsed into map geometry objects and exported as OBJ/MTL/PNG,
+       glTF/PNG, GLB, or DAE/PNG files.
    * - ``7``
      - Textures
      - Exported as raw table entries.
@@ -65,11 +66,13 @@ Parsed geometry exposes:
 * ``dl_expansions`` for expansion records that point at additional display
   lists.
 * ``save_to_obj()`` for OBJ export, textured by default.
+* ``save_to_gltf()`` for separate glTF JSON, binary, and PNG export.
+* ``save_to_glb()`` for single-file binary glTF export.
 * ``save_to_dae()`` for COLLADA export, textured by default.
 
 Display lists are decoded into F3DEX2 commands, vertices, and triangles. The
-textured OBJ and DAE exporters follow texture state commands to group mesh
-faces by material.
+textured OBJ, glTF/GLB, and DAE exporters follow texture state commands to
+group mesh faces by material.
 
 Texture Data
 ------------
@@ -91,9 +94,9 @@ Supported texture decoding includes:
 Unknown or unsupported texture combinations produce placeholder RGBA data
 instead of failing the full export.
 
-For the detailed geometry texture pipeline, including OBJ/DAE materials, UV
-conversion, vertex colors, palette handling, and the currently decoded packed
-mipmap layouts, see :doc:`textured-geometry`.
+For the detailed geometry texture pipeline, including OBJ, glTF/GLB, and DAE
+materials, UV conversion, vertex colors, palette handling, and the currently
+decoded packed mipmap layouts, see :doc:`textured-geometry`.
 
 Cutscene Data
 -------------

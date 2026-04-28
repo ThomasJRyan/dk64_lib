@@ -73,6 +73,50 @@ class _FakeGeometry:
         texture_path.write_bytes(b"png")
         return [dae_path, texture_path]
 
+    def save_to_gltf(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = True,
+        texture_folder: str = "textures",
+    ) -> list[Path]:
+        self.save_call = {
+            "filename": filename,
+            "folderpath": folderpath,
+            "include_textures": include_textures,
+            "texture_folder": texture_folder,
+        }
+        folder = Path(folderpath)
+        gltf_path = folder / filename
+        bin_path = gltf_path.with_suffix(".bin")
+        gltf_path.parent.mkdir(parents=True, exist_ok=True)
+        gltf_path.write_text("gltf")
+        bin_path.write_bytes(b"bin")
+        if not include_textures:
+            return [gltf_path, bin_path]
+
+        texture_path = folder / texture_folder / "texture.png"
+        texture_path.parent.mkdir(parents=True, exist_ok=True)
+        texture_path.write_bytes(b"png")
+        return [gltf_path, bin_path, texture_path]
+
+    def save_to_glb(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = True,
+    ) -> list[Path]:
+        self.save_call = {
+            "filename": filename,
+            "folderpath": folderpath,
+            "include_textures": include_textures,
+        }
+        folder = Path(folderpath)
+        glb_path = folder / filename
+        glb_path.parent.mkdir(parents=True, exist_ok=True)
+        glb_path.write_bytes(b"glb")
+        return [glb_path]
+
 
 class RomExportTest(unittest.TestCase):
     def test_export_defaults_include_textures(self):
@@ -84,6 +128,18 @@ class RomExportTest(unittest.TestCase):
         )
         self.assertIs(
             signature(GeometryData.save_to_dae)
+            .parameters["include_textures"]
+            .default,
+            True,
+        )
+        self.assertIs(
+            signature(GeometryData.save_to_gltf)
+            .parameters["include_textures"]
+            .default,
+            True,
+        )
+        self.assertIs(
+            signature(GeometryData.save_to_glb)
             .parameters["include_textures"]
             .default,
             True,
@@ -166,6 +222,40 @@ class RomExportTest(unittest.TestCase):
             self.assertEqual(geometry.save_call["include_textures"], True)
             self.assertTrue(dae_path.exists())
             self.assertTrue(texture_path.exists())
+
+    def test_export_geometries_can_write_gltf(self):
+        rom = _fake_rom()
+        geometry = _FakeGeometry()
+        rom.geometry_tables = [geometry]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = Rom.export_geometries(rom, tmpdir, geometry_format="gltf")
+            root = Path(tmpdir)
+
+            gltf_path = root / "000_Test_Map.gltf"
+            bin_path = root / "000_Test_Map.bin"
+            texture_path = root / "textures" / "texture.png"
+            self.assertEqual(paths, [gltf_path, bin_path, texture_path])
+            self.assertEqual(geometry.save_call["filename"], gltf_path.name)
+            self.assertEqual(geometry.save_call["include_textures"], True)
+            self.assertTrue(gltf_path.exists())
+            self.assertTrue(bin_path.exists())
+            self.assertTrue(texture_path.exists())
+
+    def test_export_geometries_can_write_glb(self):
+        rom = _fake_rom()
+        geometry = _FakeGeometry()
+        rom.geometry_tables = [geometry]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = Rom.export_geometries(rom, tmpdir, geometry_format="glb")
+            root = Path(tmpdir)
+
+            glb_path = root / "000_Test_Map.glb"
+            self.assertEqual(paths, [glb_path])
+            self.assertEqual(geometry.save_call["filename"], glb_path.name)
+            self.assertEqual(geometry.save_call["include_textures"], True)
+            self.assertTrue(glb_path.exists())
 
     def test_export_geometries_rejects_unknown_format(self):
         rom = _fake_rom()

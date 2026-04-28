@@ -24,7 +24,8 @@ Default output:
 
 Set ``include_assets=False`` to skip raw asset table exports. Set
 ``include_textures=False`` to write legacy geometry-only files. Set
-``geometry_format="dae"`` to write COLLADA geometry files instead of OBJ.
+``geometry_format="glb"`` for single-file binary glTF, ``"gltf"`` for separate
+glTF JSON/binary/PNG assets, or ``"dae"`` for legacy COLLADA files.
 
 Geometry
 --------
@@ -37,6 +38,36 @@ Textured OBJ geometry export writes:
 
 * ``###_<map_name>.obj``
 * ``###_<map_name>.mtl``
+* ``textures/<material_name>.png``
+* ``textures/<material_name>_mip<level>_<width>x<height>.png`` when packed
+  mipmap levels are decoded
+
+Textured GLB geometry export is selected with:
+
+.. code-block:: python
+
+   paths = rom.export_geometries(
+       "dk64_export/geometries",
+       geometry_format="glb",
+   )
+
+It writes:
+
+* ``###_<map_name>.glb``
+
+Textured glTF geometry export is selected with:
+
+.. code-block:: python
+
+   paths = rom.export_geometries(
+       "dk64_export/geometries",
+       geometry_format="gltf",
+   )
+
+It writes:
+
+* ``###_<map_name>.gltf``
+* ``###_<map_name>.bin``
 * ``textures/<material_name>.png``
 * ``textures/<material_name>_mip<level>_<width>x<height>.png`` when packed
   mipmap levels are decoded
@@ -67,21 +98,25 @@ Pointer entries are written as:
 
 The pointer file contains the target geometry table index.
 
-OBJ exports include RGB vertex colors on ``v`` lines. DAE exports include RGBA
-vertex colors in ``COLOR`` sources. Textured groups include UV coordinates and
+OBJ exports include RGB vertex colors on ``v`` lines. GLB, glTF, and DAE
+exports include RGBA vertex colors. Textured groups include UV coordinates and
 material bindings. OBJ writes ``usemtl`` statements and MTL ``map_Kd`` entries;
-DAE writes material effects with diffuse texture references.
+GLB and glTF write glTF PBR materials with ``KHR_materials_unlit`` and diffuse
+texture references; DAE writes material effects with diffuse texture references.
 Textures with transparent pixels also get dedicated ``*_alpha.png`` opacity
-masks. OBJ references those masks with ``map_d``; DAE references them from the
-material ``transparent`` channel. Textures using clamped DK64 tile state get
-clamped UVs. OBJ also emits ``-clamp on`` MTL texture map hints, while DAE emits
-``wrap_s`` and ``wrap_t`` sampler hints.
-If any exported material is transparent, the exporter also writes
+masks for OBJ and DAE. OBJ references those masks with ``map_d``; DAE references
+them from the material ``transparent`` channel. GLB and glTF use the PNG color
+texture's alpha channel directly and set transparent materials to
+``alphaMode="BLEND"``. Textures using clamped DK64 tile state get clamped UVs.
+OBJ also emits ``-clamp on`` MTL texture map hints. DAE emits ``wrap_s`` and
+``wrap_t`` sampler hints, while GLB and glTF emit glTF sampler ``wrapS`` and
+``wrapT`` values.
+For OBJ exports, if any exported material is transparent, the exporter also writes
 ``<obj_stem>.blender.py``. Run that script after importing the OBJ in Blender to
 switch those transparent materials to Blender's Blended render method.
 When a known DK64 packed mipmap layout is decoded, the MTL points at the
 highest-resolution PNG while the additional mip levels are written beside it.
-DAE follows the same highest-resolution material binding.
+GLB, glTF, and DAE follow the same highest-resolution material binding.
 The production exporter does not write raw ``*_base_*`` mipmap reference images.
 For the full pipeline and mipmap layout notes, see :doc:`textured-geometry`.
 

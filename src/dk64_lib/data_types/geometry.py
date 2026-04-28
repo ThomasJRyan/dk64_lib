@@ -15,9 +15,14 @@ from dk64_lib.f3dex2.display_list import (
 from dk64_lib.f3dex2.texture_export import (
     TexturedDaeExport,
     TexturedDaeExporter,
+    TexturedGlbExport,
+    TexturedGltfExport,
+    TexturedGltfExporter,
     TexturedObjExport,
     TexturedObjExporter,
     save_textured_dae_export,
+    save_textured_glb_export,
+    save_textured_gltf_export,
     save_textured_obj_export,
 )
 
@@ -197,6 +202,34 @@ class GeometryData(BaseData):
             texture_folder=texture_folder,
         )
 
+    def create_textured_gltf(
+        self,
+        binary_filename: str = "geometry.bin",
+        texture_folder: str = "textures",
+        include_textures: bool = True,
+    ) -> TexturedGltfExport:
+        """Creates glTF, binary, and texture image data for this geometry."""
+        texture_data = self.rom.get_geometry_texture_data() if self.rom else tuple()
+        exporter = TexturedGltfExporter(texture_data)
+        return exporter.export(
+            self.display_lists,
+            binary_filename=binary_filename,
+            texture_folder=texture_folder,
+            include_textures=include_textures,
+        )
+
+    def create_textured_glb(
+        self,
+        include_textures: bool = True,
+    ) -> TexturedGlbExport:
+        """Creates binary glTF data for this geometry."""
+        texture_data = self.rom.get_geometry_texture_data() if self.rom else tuple()
+        exporter = TexturedGltfExporter(texture_data)
+        return exporter.export_glb(
+            self.display_lists,
+            include_textures=include_textures,
+        )
+
     def save_to_obj(
         self,
         filename: str,
@@ -335,3 +368,29 @@ class GeometryData(BaseData):
         filepath.parent.mkdir(parents=True, exist_ok=True)
         self._create_geometry_only_dae().write(filepath)
         return [filepath]
+
+    def save_to_gltf(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = True,
+        texture_folder: str = "textures",
+    ) -> list[pathlib.Path]:
+        """Save geometry data to glTF format."""
+        binary_filename = pathlib.Path(filename).with_suffix(".bin").name
+        export = self.create_textured_gltf(
+            binary_filename=binary_filename,
+            texture_folder=texture_folder,
+            include_textures=include_textures,
+        )
+        return save_textured_gltf_export(export, filename, folderpath)
+
+    def save_to_glb(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = True,
+    ) -> list[pathlib.Path]:
+        """Save geometry data to binary glTF format."""
+        export = self.create_textured_glb(include_textures=include_textures)
+        return save_textured_glb_export(export, filename, folderpath)

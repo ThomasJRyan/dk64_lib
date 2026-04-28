@@ -1,5 +1,6 @@
 import os
 import glob
+import json
 import unittest
 
 from pathlib import Path
@@ -131,6 +132,39 @@ class RomTest(unittest.TestCase):
             self.assertGreater(dae_path.stat().st_size, 0)
             self.assertGreater(len(texture_paths), 0)
             self.assertTrue(texture_paths[0].exists())
+
+    def test_geometry_gltf_export(self):
+        geometry_table = self.rom.geometry_tables[0]
+        export = geometry_table.create_textured_gltf(binary_filename="0.bin")
+        gltf = json.loads(export.gltf_data)
+
+        self.assertGreater(len(gltf["meshes"]), 0)
+        self.assertGreater(len(export.binary_data), 0)
+        self.assertGreater(len(export.images), 0)
+
+        with TemporaryDirectory() as temp_dir:
+            written_paths = geometry_table.save_to_gltf("0.gltf", temp_dir)
+            gltf_path = Path(temp_dir) / "0.gltf"
+            bin_path = Path(temp_dir) / "0.bin"
+            texture_paths = [path for path in written_paths if path.suffix == ".png"]
+            self.assertEqual(written_paths[0], gltf_path)
+            self.assertEqual(written_paths[1], bin_path)
+            self.assertTrue(gltf_path.exists())
+            self.assertTrue(bin_path.exists())
+            self.assertGreater(len(texture_paths), 0)
+
+    def test_geometry_glb_export(self):
+        geometry_table = self.rom.geometry_tables[0]
+        export = geometry_table.create_textured_glb()
+
+        self.assertTrue(export.data.startswith(b"glTF"))
+
+        with TemporaryDirectory() as temp_dir:
+            written_paths = geometry_table.save_to_glb("0.glb", temp_dir)
+            glb_path = Path(temp_dir) / "0.glb"
+            self.assertEqual(written_paths, [glb_path])
+            self.assertTrue(glb_path.exists())
+            self.assertGreater(glb_path.stat().st_size, 0)
 
 
 class FileIOTest(unittest.TestCase):

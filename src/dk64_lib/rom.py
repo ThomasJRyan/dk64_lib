@@ -186,11 +186,19 @@ class Rom:
         self,
         folderpath: str | Path = "exports/geometries",
         include_textures: bool = True,
-        geometry_format: Literal["obj", "dae"] = "obj",
+        geometry_format: Literal["obj", "dae", "gltf", "glb"] = "obj",
     ) -> list[Path]:
-        """Export geometry tables as OBJ or DAE files, textured by default."""
-        if geometry_format not in ("obj", "dae"):
-            raise ValueError("geometry_format must be 'obj' or 'dae'")
+        """Export geometry tables as OBJ, DAE, glTF, or GLB files."""
+        geometry_saver_names = {
+            "obj": "save_to_obj",
+            "dae": "save_to_dae",
+            "gltf": "save_to_gltf",
+            "glb": "save_to_glb",
+        }
+        try:
+            save_geometry_name = geometry_saver_names[geometry_format]
+        except KeyError:
+            raise ValueError("geometry_format must be 'obj', 'dae', 'gltf', or 'glb'")
 
         exported_paths = list()
         root = Path(folderpath)
@@ -208,11 +216,7 @@ class Rom:
                 continue
 
             geometry_path = root / f"{filename_stem}.{geometry_format}"
-            save_geometry = (
-                geometry_data.save_to_dae
-                if geometry_format == "dae"
-                else geometry_data.save_to_obj
-            )
+            save_geometry = getattr(geometry_data, save_geometry_name)
             written_paths = save_geometry(
                 geometry_path.name,
                 str(root),
@@ -257,7 +261,7 @@ class Rom:
         folderpath: str | Path = "exports",
         include_textures: bool = True,
         include_assets: bool = True,
-        geometry_format: Literal["obj", "dae"] = "obj",
+        geometry_format: Literal["obj", "dae", "gltf", "glb"] = "obj",
     ) -> dict[str, list[Path]]:
         """Export all currently supported ROM data to organized folders."""
         root = Path(folderpath)

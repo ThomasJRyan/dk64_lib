@@ -1,3 +1,5 @@
+import json
+import struct
 import tempfile
 import unittest
 import zlib
@@ -8,12 +10,15 @@ from types import SimpleNamespace
 from dk64_lib.f3dex2.display_list import DisplayList
 from dk64_lib.f3dex2.texture_export import (
     TexturedDaeExporter,
+    TexturedGltfExporter,
     TexturedObjExport,
     TexturedObjExporter,
     TexturedObjSupportFile,
     decode_texture,
     rgba_to_png,
     save_textured_dae_export,
+    save_textured_glb_export,
+    save_textured_gltf_export,
     save_textured_obj_export,
     test_mipmap_export as export_test_mipmap,
 )
@@ -179,6 +184,30 @@ def _png_rgba(data: bytes) -> tuple[tuple[int, int], bytes]:
         row_start = row * row_size
         pixels.extend(rows[row_start + 1 : row_start + row_size])
     return (width, height), bytes(pixels)
+
+
+def _glb_chunks(data: bytes) -> tuple[dict, bytes]:
+    magic, version, length = struct.unpack("<III", data[:12])
+    assert magic == 0x46546C67
+    assert version == 2
+    assert length == len(data)
+
+    cursor = 12
+    json_chunk = None
+    bin_chunk = None
+    while cursor < len(data):
+        chunk_length, chunk_type = struct.unpack("<I4s", data[cursor : cursor + 8])
+        cursor += 8
+        chunk_data = data[cursor : cursor + chunk_length]
+        cursor += chunk_length
+        if chunk_type == b"JSON":
+            json_chunk = json.loads(chunk_data.rstrip(b" ").decode("utf-8"))
+        elif chunk_type == b"BIN\x00":
+            bin_chunk = chunk_data
+
+    assert json_chunk is not None
+    assert bin_chunk is not None
+    return json_chunk, bin_chunk
 
 
 class TextureExportTest(unittest.TestCase):
@@ -421,6 +450,99 @@ class TextureExportTest(unittest.TestCase):
             '<texture texture="tex_0_pal_none_f0_s2_2x2_clamp_t-alpha-sampler" '
             'texcoord="TEX0"',
             dae_data,
+        )
+
+    def test_gltf_exporter_writes_textured_materials_and_alpha(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+            cm_t=2,
+        )
+
+        export = TexturedGltfExporter(texture_data).export(
+            [display_list],
+            binary_filename="model.bin",
+        )
+        gltf = json.loads(export.gltf_data)
+
+        self.assertEqual(export.binary_filename, "model.bin")
+        self.assertGreater(len(export.binary_data), 0)
+        self.assertEqual(
+            [image.filename for image in export.images],
+            ["textures/tex_0_pal_none_f0_s2_2x2_clamp_t.png"],
+        )
+        self.assertEqual(gltf["buffers"][0]["uri"], "model.bin")
+        self.assertEqual(gltf["buffers"][0]["byteLength"], len(export.binary_data))
+        self.assertEqual(
+            gltf["images"],
+            [
+                {
+                    "name": "tex_0_pal_none_f0_s2_2x2_clamp_t",
+                    "uri": "textures/tex_0_pal_none_f0_s2_2x2_clamp_t.png",
+                }
+            ],
+        )
+        self.assertEqual(gltf["samplers"], [{"wrapS": 10497, "wrapT": 33071}])
+        self.assertEqual(gltf["materials"][1]["alphaMode"], "BLEND")
+        self.assertEqual(
+            gltf["materials"][1]["pbrMetallicRoughness"]["baseColorTexture"],
+            {"index": 0, "texCoord": 0},
+        )
+        primitive = gltf["meshes"][0]["primitives"][0]
+        self.assertEqual(
+            set(primitive["attributes"]),
+            {"POSITION", "COLOR_0", "TEXCOORD_0"},
+        )
+        self.assertEqual(primitive["mode"], 4)
+        self.assertEqual(gltf["accessors"][primitive["attributes"]["COLOR_0"]]["type"], "VEC4")
+        self.assertIn("KHR_materials_unlit", gltf["extensionsUsed"])
+
+    def test_glb_exporter_embeds_texture_and_alpha_material(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+            cm_s=2,
+            cm_t=2,
+        )
+
+        export = TexturedGltfExporter(texture_data).export_glb([display_list])
+        gltf, bin_chunk = _glb_chunks(export.data)
+
+        self.assertGreater(len(bin_chunk), 0)
+        self.assertNotIn("uri", gltf["buffers"][0])
+        self.assertEqual(gltf["images"][0]["mimeType"], "image/png")
+        self.assertIn("bufferView", gltf["images"][0])
+        self.assertEqual(gltf["samplers"], [{"wrapS": 33071, "wrapT": 33071}])
+        self.assertEqual(gltf["materials"][1]["alphaMode"], "BLEND")
+        self.assertEqual(
+            set(gltf["meshes"][0]["primitives"][0]["attributes"]),
+            {"POSITION", "COLOR_0", "TEXCOORD_0"},
         )
 
     def test_exporter_uses_texture_command_tile_without_exporting_mip_levels(self):
@@ -1579,6 +1701,83 @@ class TextureExportTest(unittest.TestCase):
             dae_data = (export_folder / "model.dae").read_text()
             self.assertNotIn("<transparent>", dae_data)
             self.assertNotIn("<transparency>", dae_data)
+
+    def test_save_textured_gltf_export_writes_assets(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+        )
+        export = TexturedGltfExporter(texture_data).export(
+            [display_list],
+            binary_filename="model.bin",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_folder = Path(tmpdir) / "nested"
+            written_paths = save_textured_gltf_export(
+                export,
+                "model.gltf",
+                export_folder,
+            )
+
+            self.assertEqual(
+                written_paths,
+                [
+                    export_folder / "model.gltf",
+                    export_folder / "model.bin",
+                    export_folder
+                    / "textures"
+                    / "tex_0_pal_none_f0_s2_2x2.png",
+                ],
+            )
+            self.assertTrue((export_folder / "model.gltf").exists())
+            self.assertTrue((export_folder / "model.bin").exists())
+            self.assertTrue(written_paths[-1].exists())
+
+    def test_save_textured_glb_export_writes_binary_asset(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+        )
+        export = TexturedGltfExporter(texture_data).export_glb([display_list])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_folder = Path(tmpdir) / "nested"
+            written_paths = save_textured_glb_export(
+                export,
+                "model.glb",
+                export_folder,
+            )
+
+            self.assertEqual(written_paths, [export_folder / "model.glb"])
+            self.assertTrue((export_folder / "model.glb").exists())
+            self.assertTrue((export_folder / "model.glb").read_bytes().startswith(b"glTF"))
 
 
 if __name__ == "__main__":

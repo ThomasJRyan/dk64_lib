@@ -44,11 +44,15 @@ export grouped into a single folder.
    for group, paths in exported.items():
        print(group, len(paths))
 
-The default export includes textured geometry. Disable texture assets when you
-only need legacy OBJ geometry:
+The default export includes textured geometry. Use ``geometry_format="glb"`` for
+a single-file Blender-friendly geometry export. Use ``geometry_format="gltf"``
+when you want inspectable JSON, a sidecar binary buffer, and PNG files. Disable
+texture assets when you only need legacy OBJ geometry:
 
 .. code-block:: python
 
+   rom.export_all("dk64_export", geometry_format="glb")
+   rom.export_all("dk64_export", geometry_format="gltf")
    rom.export_all("dk64_export", include_textures=False)
 
 Read Text Lines
@@ -66,13 +70,21 @@ Export Geometry
 ---------------
 
 Geometry exports are written as OBJ files by default. Textured OBJ exports also
-create MTL and PNG files.
+create MTL and PNG files. For Blender, GLB is the preferred richer export
+container.
 
 .. code-block:: python
 
    rom.export_geometries("dk64_export/geometries")
 
-Use COLLADA when you want a richer geometry container:
+Use GLB or glTF when you want a richer geometry container:
+
+.. code-block:: python
+
+   rom.export_geometries("dk64_export/geometries", geometry_format="glb")
+   rom.export_geometries("dk64_export/geometries", geometry_format="gltf")
+
+COLLADA export remains available for tools that still accept DAE:
 
 .. code-block:: python
 
@@ -84,13 +96,17 @@ Export a single geometry table entry:
 
    geometry = rom.geometry_tables[0]
    geometry.save_to_obj("map_000.obj", "dk64_export/geometries")
+   geometry.save_to_glb("map_000.glb", "dk64_export/geometries")
+   geometry.save_to_gltf("map_000.gltf", "dk64_export/geometries")
    geometry.save_to_dae("map_000.dae", "dk64_export/geometries")
 
 By default, OBJ export writes RGB vertex colors, UV coordinates for textured
-mesh groups, MTL materials, and decoded PNG textures. DAE export writes RGBA
-vertex colors, UV coordinates, material effects, sampler clamp hints, and the
-same decoded PNG textures. See :doc:`textured-geometry` for the full geometry,
-texture, and packed mipmap pipeline.
+mesh groups, MTL materials, and decoded PNG textures. GLB and glTF write RGBA
+vertex colors, UV coordinates, unlit materials, PNG texture references or
+embedded PNG texture data, alpha blend hints, and sampler clamp hints. DAE
+export also writes textured geometry for legacy COLLADA workflows. See
+:doc:`textured-geometry` for the full geometry, texture, and packed mipmap
+pipeline.
 
 Next Steps
 ----------

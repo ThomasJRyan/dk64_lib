@@ -45,6 +45,22 @@ rom = Rom("Donkey Kong 64 (USA).z64")
 rom.export_geometries("dk64_export/geometries")
 ```
 
+Export every map to GLB for Blender-friendly textured geometry:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.export_geometries("dk64_export/geometries", geometry_format="glb")
+```
+
+Export every map to separate glTF, binary, and PNG files:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.export_geometries("dk64_export/geometries", geometry_format="gltf")
+```
+
 Export every map to DAE with PNG texture assets:
 ```python
 from dk64_lib.rom import Rom
@@ -59,6 +75,15 @@ from dk64_lib.rom import Rom
 rom = Rom("Donkey Kong 64 (USA).z64")
 
 rom.geometry_tables[0].save_to_obj("0.obj")
+```
+
+Export a single map as textured GLB or glTF:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.geometry_tables[0].save_to_glb("0.glb")
+rom.geometry_tables[0].save_to_gltf("0.gltf")
 ```
 
 Export a single map as textured DAE:
