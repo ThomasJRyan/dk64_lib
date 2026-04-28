@@ -186,9 +186,9 @@ class Rom:
         self,
         folderpath: str | Path = "exports/geometries",
         include_textures: bool = True,
-        geometry_format: Literal["obj", "dae", "gltf", "glb"] = "obj",
+        geometry_format: Literal["obj", "dae", "gltf", "glb"] = "glb",
     ) -> list[Path]:
-        """Export geometry tables as OBJ, DAE, glTF, or GLB files."""
+        """Export geometry tables as GLB, OBJ, DAE, or glTF files."""
         geometry_saver_names = {
             "obj": "save_to_obj",
             "dae": "save_to_dae",
@@ -261,7 +261,7 @@ class Rom:
         folderpath: str | Path = "exports",
         include_textures: bool = True,
         include_assets: bool = True,
-        geometry_format: Literal["obj", "dae", "gltf", "glb"] = "obj",
+        geometry_format: Literal["obj", "dae", "gltf", "glb"] = "glb",
     ) -> dict[str, list[Path]]:
         """Export all currently supported ROM data to organized folders."""
         root = Path(folderpath)

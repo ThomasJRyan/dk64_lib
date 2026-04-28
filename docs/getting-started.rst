@@ -44,15 +44,15 @@ export grouped into a single folder.
    for group, paths in exported.items():
        print(group, len(paths))
 
-The default export includes textured geometry. Use ``geometry_format="glb"`` for
-a single-file Blender-friendly geometry export. Use ``geometry_format="gltf"``
-when you want inspectable JSON, a sidecar binary buffer, and PNG files. Disable
-texture assets when you only need legacy OBJ geometry:
+The default export includes textured GLB geometry. Use ``geometry_format="gltf"``
+when you want inspectable JSON, a sidecar binary buffer, and PNG files. Use
+``geometry_format="obj"`` for legacy OBJ/MTL geometry. Disable texture assets
+when you only need geometry without texture materials:
 
 .. code-block:: python
 
-   rom.export_all("dk64_export", geometry_format="glb")
    rom.export_all("dk64_export", geometry_format="gltf")
+   rom.export_all("dk64_export", geometry_format="obj")
    rom.export_all("dk64_export", include_textures=False)
 
 Read Text Lines
@@ -69,20 +69,20 @@ Each line exposes a combined ``text`` property.
 Export Geometry
 ---------------
 
-Geometry exports are written as OBJ files by default. Textured OBJ exports also
-create MTL and PNG files. For Blender, GLB is the preferred richer export
-container.
+Geometry exports are written as GLB files by default. This is the preferred
+Blender-friendly textured geometry container.
 
 .. code-block:: python
 
    rom.export_geometries("dk64_export/geometries")
 
-Use GLB or glTF when you want a richer geometry container:
+Use glTF when you want separate inspectable JSON, binary, and PNG files. Use OBJ
+when you need the legacy Wavefront output:
 
 .. code-block:: python
 
-   rom.export_geometries("dk64_export/geometries", geometry_format="glb")
    rom.export_geometries("dk64_export/geometries", geometry_format="gltf")
+   rom.export_geometries("dk64_export/geometries", geometry_format="obj")
 
 COLLADA export remains available for tools that still accept DAE:
 

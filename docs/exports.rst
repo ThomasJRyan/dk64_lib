@@ -22,10 +22,11 @@ Default output:
      cutscenes/
      assets/
 
-Set ``include_assets=False`` to skip raw asset table exports. Set
-``include_textures=False`` to write legacy geometry-only files. Set
-``geometry_format="glb"`` for single-file binary glTF, ``"gltf"`` for separate
-glTF JSON/binary/PNG assets, or ``"dae"`` for legacy COLLADA files.
+Set ``include_assets=False`` to skip raw asset table exports. Geometry export
+uses single-file binary glTF by default. Set ``geometry_format="gltf"`` for
+separate glTF JSON/binary/PNG assets, ``"obj"`` for legacy OBJ/MTL files, or
+``"dae"`` for legacy COLLADA files. Set ``include_textures=False`` to write
+geometry without texture materials.
 
 Geometry
 --------
@@ -34,26 +35,24 @@ Geometry
 
    paths = rom.export_geometries("dk64_export/geometries")
 
-Textured OBJ geometry export writes:
+Textured GLB geometry export writes by default:
+
+* ``###_<map_name>.glb``
+
+The default call is:
+
+.. code-block:: python
+
+   paths = rom.export_geometries("dk64_export/geometries")
+
+Textured OBJ geometry export is selected with ``geometry_format="obj"``. It
+writes:
 
 * ``###_<map_name>.obj``
 * ``###_<map_name>.mtl``
 * ``textures/<material_name>.png``
 * ``textures/<material_name>_mip<level>_<width>x<height>.png`` when packed
   mipmap levels are decoded
-
-Textured GLB geometry export is selected with:
-
-.. code-block:: python
-
-   paths = rom.export_geometries(
-       "dk64_export/geometries",
-       geometry_format="glb",
-   )
-
-It writes:
-
-* ``###_<map_name>.glb``
 
 Textured glTF geometry export is selected with:
 

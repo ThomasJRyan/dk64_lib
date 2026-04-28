@@ -158,7 +158,13 @@ class RomExportTest(unittest.TestCase):
             signature(Rom.export_geometries)
             .parameters["geometry_format"]
             .default,
-            "obj",
+            "glb",
+        )
+        self.assertEqual(
+            signature(Rom.export_all)
+            .parameters["geometry_format"]
+            .default,
+            "glb",
         )
 
     def test_safe_filename(self):
@@ -168,7 +174,7 @@ class RomExportTest(unittest.TestCase):
         )
         self.assertEqual(Rom._safe_filename("..."), "asset")
 
-    def test_export_geometries_writes_objs_textures_and_pointer_files(self):
+    def test_export_geometries_writes_glbs_by_default_and_pointer_files(self):
         rom = _fake_rom()
         geometry = _FakeGeometry()
         rom.geometry_tables = [
@@ -180,17 +186,13 @@ class RomExportTest(unittest.TestCase):
             paths = Rom.export_geometries(rom, tmpdir)
             root = Path(tmpdir)
 
-            obj_path = root / "000_Test_Map.obj"
-            mtl_path = root / "000_Test_Map.mtl"
-            texture_path = root / "textures" / "texture.png"
+            glb_path = root / "000_Test_Map.glb"
             pointer_path = root / "001_Funky_s_Store.pointer.txt"
 
-            self.assertEqual(geometry.save_call["filename"], obj_path.name)
+            self.assertEqual(geometry.save_call["filename"], glb_path.name)
             self.assertEqual(geometry.save_call["include_textures"], True)
-            self.assertEqual(paths, [obj_path, mtl_path, texture_path, pointer_path])
-            self.assertTrue(obj_path.exists())
-            self.assertTrue(mtl_path.exists())
-            self.assertTrue(texture_path.exists())
+            self.assertEqual(paths, [glb_path, pointer_path])
+            self.assertTrue(glb_path.exists())
             self.assertEqual(pointer_path.read_text(), "points_to=0\n")
 
     def test_export_geometries_can_skip_textures(self):
@@ -202,9 +204,28 @@ class RomExportTest(unittest.TestCase):
             paths = Rom.export_geometries(rom, tmpdir, include_textures=False)
             root = Path(tmpdir)
 
-            self.assertEqual(paths, [root / "000_Test_Map.obj"])
+            self.assertEqual(paths, [root / "000_Test_Map.glb"])
             self.assertEqual(geometry.save_call["include_textures"], False)
             self.assertFalse((root / "000_Test_Map.mtl").exists())
+
+    def test_export_geometries_can_write_obj(self):
+        rom = _fake_rom()
+        geometry = _FakeGeometry()
+        rom.geometry_tables = [geometry]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = Rom.export_geometries(rom, tmpdir, geometry_format="obj")
+            root = Path(tmpdir)
+
+            obj_path = root / "000_Test_Map.obj"
+            mtl_path = root / "000_Test_Map.mtl"
+            texture_path = root / "textures" / "texture.png"
+            self.assertEqual(paths, [obj_path, mtl_path, texture_path])
+            self.assertEqual(geometry.save_call["filename"], obj_path.name)
+            self.assertEqual(geometry.save_call["include_textures"], True)
+            self.assertTrue(obj_path.exists())
+            self.assertTrue(mtl_path.exists())
+            self.assertTrue(texture_path.exists())
 
     def test_export_geometries_can_write_dae(self):
         rom = _fake_rom()
@@ -330,7 +351,7 @@ class RomExportTest(unittest.TestCase):
     def test_export_all_combines_supported_exports(self):
         rom = _fake_rom()
         rom.export_geometries = (
-            lambda folderpath, include_textures=True, geometry_format="obj": [
+            lambda folderpath, include_textures=True, geometry_format="glb": [
                 Path(folderpath) / f"textures_{include_textures}.{geometry_format}"
             ]
         )

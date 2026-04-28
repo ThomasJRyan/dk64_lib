@@ -33,13 +33,11 @@ Textured geometry export starts at one of the high-level helpers:
 * ``GeometryData.save_to_dae()``
 * ``GeometryData.create_textured_dae()``
 
-Geometry OBJ export includes textures by default. ``GeometryData.save_to_obj()``
-has ``include_textures=True`` as its default, and ``Rom.export_geometries()`` and
-``Rom.export_all()`` pass that default through unless the caller disables it.
-glTF, GLB, and DAE export follow the same default through their matching
-``GeometryData`` save helpers. They can be selected for ROM-level batch exports
-with ``geometry_format="gltf"``, ``geometry_format="glb"``, or
-``geometry_format="dae"``.
+Geometry exports include textures by default. ``Rom.export_geometries()`` and
+``Rom.export_all()`` write GLB files unless the caller selects another
+``geometry_format``. The explicit ``GeometryData.save_to_obj()``,
+``save_to_gltf()``, ``save_to_glb()``, and ``save_to_dae()`` helpers also keep
+``include_textures=True`` as their default.
 
 The export flow is:
 
@@ -682,15 +680,15 @@ folders:
      cutscenes/
      assets/
 
-Geometry exports use textured OBJ output by default. Pass
-``geometry_format="glb"``, ``geometry_format="gltf"``, or
+Geometry exports use textured GLB output by default. Pass
+``geometry_format="obj"``, ``geometry_format="gltf"``, or
 ``geometry_format="dae"`` to ``Rom.export_geometries()`` or ``Rom.export_all()``
-to write one of the richer geometry formats instead. Texture table exports are
-different: ``Rom.export_textures()`` writes decompressed raw table entries from
-the known texture tables. Those raw texture exports are useful for analysis, but
-they are not the same PNG files written beside OBJ, glTF, or DAE geometry.
-Geometry texture PNGs are decoded from the geometry texture table as display
-lists reference them.
+to write another geometry format instead. Texture table exports are different:
+``Rom.export_textures()`` writes decompressed raw table entries from the known
+texture tables. Those raw texture exports are useful for analysis, but they are
+not the same PNG files written beside OBJ, glTF, or DAE geometry. Geometry
+texture PNGs are decoded from the geometry texture table as display lists
+reference them.
 
 Testing Coverage
 ----------------
