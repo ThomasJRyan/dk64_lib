@@ -566,6 +566,28 @@ class TextureExportTest(unittest.TestCase):
                 palette_data=palette,
             ),
         )
+        self.assertEqual(
+            mip2_pixels[16 * 4 : 24 * 4],
+            decode_texture(
+                bytes(tuple(range(8))),
+                fmt=2,
+                size=1,
+                width=8,
+                height=1,
+                palette_data=palette,
+            ),
+        )
+        self.assertEqual(
+            mip2_pixels[24 * 4 : 32 * 4],
+            decode_texture(
+                bytes(tuple(range(12, 16)) + tuple(range(8, 12))),
+                fmt=2,
+                size=1,
+                width=8,
+                height=1,
+                palette_data=palette,
+            ),
+        )
         mip3_size, mip3_pixels = _png_rgba(export.images[3].data)
         self.assertEqual(mip3_size, (4, 4))
         self.assertEqual(
@@ -581,6 +603,28 @@ class TextureExportTest(unittest.TestCase):
         )
         self.assertEqual(
             mip3_pixels[4 * 4 : 8 * 4],
+            decode_texture(
+                bytes(tuple(range(12, 16))),
+                fmt=2,
+                size=1,
+                width=4,
+                height=1,
+                palette_data=palette,
+            ),
+        )
+        self.assertEqual(
+            mip3_pixels[8 * 4 : 12 * 4],
+            decode_texture(
+                bytes(tuple(range(4))),
+                fmt=2,
+                size=1,
+                width=4,
+                height=1,
+                palette_data=palette,
+            ),
+        )
+        self.assertEqual(
+            mip3_pixels[12 * 4 : 16 * 4],
             decode_texture(
                 bytes(tuple(range(12, 16))),
                 fmt=2,
@@ -1053,10 +1097,138 @@ class TextureExportTest(unittest.TestCase):
                 ],
             )
             self.assertEqual(_png_rgba(filepaths[0].read_bytes())[0], (32, 43))
-            self.assertEqual(_png_rgba(filepaths[1].read_bytes())[0], (32, 32))
-            self.assertEqual(_png_rgba(filepaths[2].read_bytes())[0], (16, 16))
-            self.assertEqual(_png_rgba(filepaths[3].read_bytes())[0], (8, 8))
-            self.assertEqual(_png_rgba(filepaths[4].read_bytes())[0], (4, 4))
+            level0_size, level0_pixels = _png_rgba(filepaths[1].read_bytes())
+            self.assertEqual(level0_size, (32, 32))
+            self.assertEqual(
+                level0_pixels[32 * 4 : 64 * 4],
+                decode_texture(
+                    bytes(
+                        tuple(range(4, 8))
+                        + tuple(range(4))
+                        + tuple(range(12, 16))
+                        + tuple(range(8, 12))
+                        + tuple(range(4, 8))
+                        + tuple(range(4))
+                        + tuple(range(12, 16))
+                        + tuple(range(8, 12))
+                    ),
+                    fmt=2,
+                    size=1,
+                    width=32,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
+            mip1_size, mip1_pixels = _png_rgba(filepaths[2].read_bytes())
+            self.assertEqual(mip1_size, (16, 16))
+            self.assertEqual(
+                mip1_pixels[16 * 4 : 32 * 4],
+                decode_texture(
+                    bytes(
+                        tuple(range(4, 8))
+                        + tuple(range(4))
+                        + tuple(range(12, 16))
+                        + tuple(range(8, 12))
+                    ),
+                    fmt=2,
+                    size=1,
+                    width=16,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
+            mip2_size, mip2_pixels = _png_rgba(filepaths[3].read_bytes())
+            self.assertEqual(mip2_size, (8, 8))
+            self.assertEqual(
+                mip2_pixels[: 8 * 4],
+                decode_texture(
+                    bytes(tuple(range(8))),
+                    fmt=2,
+                    size=1,
+                    width=8,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
+            self.assertEqual(
+                mip2_pixels[8 * 4 : 16 * 4],
+                decode_texture(
+                    bytes(tuple(range(12, 16)) + tuple(range(8, 12))),
+                    fmt=2,
+                    size=1,
+                    width=8,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
+            self.assertEqual(
+                mip2_pixels[16 * 4 : 24 * 4],
+                decode_texture(
+                    bytes(tuple(range(8))),
+                    fmt=2,
+                    size=1,
+                    width=8,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
+            self.assertEqual(
+                mip2_pixels[24 * 4 : 32 * 4],
+                decode_texture(
+                    bytes(tuple(range(12, 16)) + tuple(range(8, 12))),
+                    fmt=2,
+                    size=1,
+                    width=8,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
+            mip3_size, mip3_pixels = _png_rgba(filepaths[4].read_bytes())
+            self.assertEqual(mip3_size, (4, 4))
+            self.assertEqual(
+                mip3_pixels[: 4 * 4],
+                decode_texture(
+                    bytes(tuple(range(4))),
+                    fmt=2,
+                    size=1,
+                    width=4,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
+            self.assertEqual(
+                mip3_pixels[4 * 4 : 8 * 4],
+                decode_texture(
+                    bytes(tuple(range(12, 16))),
+                    fmt=2,
+                    size=1,
+                    width=4,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
+            self.assertEqual(
+                mip3_pixels[8 * 4 : 12 * 4],
+                decode_texture(
+                    bytes(tuple(range(4))),
+                    fmt=2,
+                    size=1,
+                    width=4,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
+            self.assertEqual(
+                mip3_pixels[12 * 4 : 16 * 4],
+                decode_texture(
+                    bytes(tuple(range(12, 16))),
+                    fmt=2,
+                    size=1,
+                    width=4,
+                    height=1,
+                    palette_data=palette,
+                ),
+            )
 
     def test_test_mipmap_export_writes_ci4_32x32_mipmap_levels(self):
         palette = b"".join(_rgba16(value, value, value) for value in range(0, 256, 17))
