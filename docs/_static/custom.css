@@ -1,0 +1,240 @@
+:root {
+  --ink: #1f2523;
+  --muted: #5d6964;
+  --panel: #ffffff;
+  --line: #d9e1dc;
+  --accent: #1f7a5a;
+  --accent-strong: #155941;
+  --warm: #b85c38;
+  --soft: #f5f7f6;
+  --code-bg: #f1f4f2;
+}
+
+body {
+  color: var(--ink);
+  background: var(--soft);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  letter-spacing: 0;
+}
+
+div.document {
+  background: transparent;
+}
+
+div.body {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 18px 45px rgba(31, 37, 35, 0.08);
+  min-height: 70vh;
+}
+
+div.body h1,
+div.body h2,
+div.body h3,
+div.body h4 {
+  color: var(--ink);
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+div.body h1 {
+  font-size: 2.35rem;
+}
+
+div.body h2 {
+  border-bottom: 1px solid var(--line);
+  font-size: 1.55rem;
+  padding-bottom: 0.35rem;
+}
+
+a,
+a.reference {
+  color: var(--accent-strong);
+}
+
+a:hover,
+a.reference:hover {
+  color: var(--warm);
+}
+
+div.sphinxsidebar {
+  font-size: 0.95rem;
+}
+
+div.sphinxsidebar h1,
+div.sphinxsidebar h3 {
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+div.sphinxsidebar input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+}
+
+code,
+tt,
+pre {
+  font-family:
+    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+code.literal {
+  background: var(--code-bg);
+  border: 1px solid #dce4df;
+  border-radius: 5px;
+  color: #254136;
+  padding: 0.08rem 0.25rem;
+}
+
+div.highlight {
+  background: var(--code-bg);
+  border: 1px solid #dce4df;
+  border-radius: 8px;
+}
+
+div.highlight pre {
+  padding: 1rem;
+}
+
+table.docutils {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+}
+
+table.docutils th {
+  background: #eaf1ed;
+  color: var(--ink);
+}
+
+table.docutils td,
+table.docutils th {
+  border-color: var(--line);
+  padding: 0.7rem 0.8rem;
+}
+
+.hero {
+  background:
+    linear-gradient(135deg, rgba(31, 122, 90, 0.13), rgba(184, 92, 56, 0.10)),
+    #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 1.1rem 0 1.5rem;
+  padding: clamp(1.4rem, 4vw, 3rem);
+}
+
+.hero-kicker,
+.card-label {
+  color: var(--warm);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.8rem;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 4.8vw, 4.2rem);
+  line-height: 1.02;
+  margin: 0;
+  max-width: 840px;
+}
+
+.hero-copy {
+  color: var(--muted);
+  font-size: 1.08rem;
+  line-height: 1.65;
+  margin: 1.1rem 0 0;
+  max-width: 760px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.button {
+  border-radius: 7px;
+  display: inline-flex;
+  font-weight: 700;
+  padding: 0.72rem 1rem;
+  text-decoration: none;
+}
+
+.button.primary {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.button.secondary {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--accent-strong);
+}
+
+.card-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 1.5rem 0 2.2rem;
+}
+
+.doc-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 1.1rem;
+  text-decoration: none;
+}
+
+.doc-card strong {
+  color: var(--ink);
+  font-size: 1.08rem;
+}
+
+.doc-card span:last-child {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.doc-card:hover {
+  border-color: rgba(31, 122, 90, 0.5);
+  box-shadow: 0 10px 25px rgba(31, 37, 35, 0.08);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 820px) {
+  div.body {
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    box-shadow: none;
+  }
+
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .button {
+    justify-content: center;
+  }
+}
