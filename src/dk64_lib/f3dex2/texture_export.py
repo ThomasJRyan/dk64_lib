@@ -742,7 +742,11 @@ def _standard_mipmap_levels(
             None,
             level0_width,
             level0_height,
-            _slice_flat_rgba(base_rgba, 0, level0_width, level0_height),
+            _swap_odd_rows_rgba(
+                _slice_flat_rgba(base_rgba, 0, level0_width, level0_height),
+                source_width=level0_width,
+                group_pixels=16,
+            ),
         ),
         _DecodedTextureLevel(
             1,

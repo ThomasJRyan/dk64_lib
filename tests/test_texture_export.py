@@ -504,7 +504,22 @@ class TextureExportTest(unittest.TestCase):
             ],
         )
         self.assertFalse(any("_base_" in image.filename for image in export.images))
-        self.assertEqual(_png_rgba(export.images[0].data)[0], (32, 32))
+        level0_size, level0_pixels = _png_rgba(export.images[0].data)
+        self.assertEqual(level0_size, (32, 32))
+        expected_swapped_row = decode_texture(
+            bytes(
+                tuple(range(8, 16))
+                + tuple(range(8))
+                + tuple(range(8, 16))
+                + tuple(range(8))
+            ),
+            fmt=2,
+            size=1,
+            width=32,
+            height=1,
+            palette_data=palette,
+        )
+        self.assertEqual(level0_pixels[32 * 4 : 64 * 4], expected_swapped_row)
         self.assertEqual(_png_rgba(export.images[1].data)[0], (16, 16))
         self.assertEqual(_png_rgba(export.images[2].data)[0], (8, 8))
         self.assertEqual(_png_rgba(export.images[3].data)[0], (4, 4))
@@ -541,7 +556,24 @@ class TextureExportTest(unittest.TestCase):
             ],
         )
         self.assertFalse(any("_base_" in image.filename for image in export.images))
-        self.assertEqual(_png_rgba(export.images[0].data)[0], (32, 32))
+        level0_size, level0_pixels = _png_rgba(export.images[0].data)
+        self.assertEqual(level0_size, (32, 32))
+        expected_swapped_row = decode_texture(
+            _ci4_indices(
+                *(
+                    tuple(range(8, 16))
+                    + tuple(range(8))
+                    + tuple(range(8, 16))
+                    + tuple(range(8))
+                )
+            ),
+            fmt=2,
+            size=0,
+            width=32,
+            height=1,
+            palette_data=palette,
+        )
+        self.assertEqual(level0_pixels[32 * 4 : 64 * 4], expected_swapped_row)
         self.assertEqual(_png_rgba(export.images[1].data)[0], (16, 16))
         self.assertEqual(_png_rgba(export.images[2].data)[0], (8, 8))
         self.assertEqual(_png_rgba(export.images[3].data)[0], (4, 4))
