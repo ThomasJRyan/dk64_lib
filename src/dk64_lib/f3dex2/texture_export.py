@@ -683,7 +683,7 @@ def _has_packed_mipmap_storage(
     return _raw_texture_pixel_count(raw_texture, size) >= required_pixels
 
 
-_BASE_ONLY_MIPMAP_TEST_SPECS = ((208, 209, 2, 0, 64, 32),)
+_CI4_64X32_MIPMAP_TEST_SPEC = (208, 209, 2, 0, 64, 32)
 
 
 def test_mipmap_export(
@@ -706,12 +706,12 @@ def test_mipmap_export(
     if include_ci4_reference and ci4_reference not in specs:
         specs.append(ci4_reference)
     if include_base_references:
-        for reference in _BASE_ONLY_MIPMAP_TEST_SPECS:
-            if (
-                reference not in specs
-                and _raw_texture_data(texture_data, reference[0]) is not None
-            ):
-                specs.append(reference)
+        reference = _CI4_64X32_MIPMAP_TEST_SPEC
+        if (
+            reference not in specs
+            and _raw_texture_data(texture_data, reference[0]) is not None
+        ):
+            specs.append(reference)
 
     for spec in specs:
         filepaths.extend(
@@ -750,10 +750,15 @@ def _test_mipmap_export_for_texture(
         height=base_height,
         palette_data=raw_palette,
     )
-    if (texture_index, palette_index, fmt, size, width, height) in (
-        _BASE_ONLY_MIPMAP_TEST_SPECS
-    ):
-        return _test_base_mipmap_export_for_texture(
+    if (
+        texture_index,
+        palette_index,
+        fmt,
+        size,
+        width,
+        height,
+    ) == _CI4_64X32_MIPMAP_TEST_SPEC:
+        return _test_ci4_64x32_mipmap_export_for_texture(
             folderpath,
             texture_index,
             palette_index,
@@ -862,7 +867,7 @@ def _test_mipmap_export_for_texture(
     return filepaths
 
 
-def _test_base_mipmap_export_for_texture(
+def _test_ci4_64x32_mipmap_export_for_texture(
     folderpath: pathlib.Path,
     texture_index: int,
     palette_index: int | None,
@@ -874,6 +879,11 @@ def _test_base_mipmap_export_for_texture(
     base_height: int,
     base_rgba: bytes,
 ) -> list[pathlib.Path]:
+    level0_rgba = _swap_odd_rows_rgba(
+        _slice_flat_rgba(base_rgba, 0, width, height),
+        source_width=width,
+        group_pixels=16,
+    )
     return _write_test_mipmap_outputs(
         folderpath,
         texture_index,
@@ -882,7 +892,10 @@ def _test_base_mipmap_export_for_texture(
         size,
         width,
         height,
-        (("base", base_width, base_height, base_rgba),),
+        (
+            ("base", base_width, base_height, base_rgba),
+            (None, width, height, level0_rgba),
+        ),
     )
 
 

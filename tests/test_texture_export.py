@@ -752,9 +752,13 @@ class TextureExportTest(unittest.TestCase):
 
             self.assertEqual(
                 [filepath.name for filepath in filepaths],
-                ["tex_208_pal_209_f2_s0_64x32_base_64x43.png"],
+                [
+                    "tex_208_pal_209_f2_s0_64x32_base_64x43.png",
+                    "tex_208_pal_209_f2_s0_64x32.png",
+                ],
             )
             self.assertEqual(_png_rgba(filepaths[0].read_bytes())[0], (64, 43))
+            self.assertEqual(_png_rgba(filepaths[1].read_bytes())[0], (64, 32))
 
     def test_save_textured_obj_export_writes_assets(self):
         texture_data = [SimpleNamespace(raw_data=_rgba16(255, 0, 0))]
