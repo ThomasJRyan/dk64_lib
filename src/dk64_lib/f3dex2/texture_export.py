@@ -881,8 +881,10 @@ def _test_ci4_64x32_mipmap_export_for_texture(
 ) -> list[pathlib.Path]:
     level1_width, level1_height = max(1, width // 2), max(1, height // 2)
     level2_width, level2_height = max(1, width // 4), max(1, height // 4)
+    level3_width, level3_height = max(1, width // 8), max(1, height // 8)
     level1_start_pixel = width * height
     level2_start_pixel = level1_start_pixel + width * math.ceil(level1_height / 2)
+    level3_start_pixel = level2_start_pixel + width * math.ceil(level2_height / 4)
     level0_rgba = _swap_odd_rows_rgba(
         _slice_flat_rgba(base_rgba, 0, width, height),
         source_width=width,
@@ -905,6 +907,14 @@ def _test_ci4_64x32_mipmap_export_for_texture(
         source_group_pixels=width,
         swap_group_pixels=16,
     )
+    level3_rgba = _slice_offset_rows_rgba(
+        base_rgba,
+        start_pixel=level3_start_pixel,
+        output_width=level3_width,
+        output_height=level3_height,
+        source_group_pixels=width,
+        row_offsets=(0, 24, 32, 56),
+    )
     return _write_test_mipmap_outputs(
         folderpath,
         texture_index,
@@ -918,6 +928,7 @@ def _test_ci4_64x32_mipmap_export_for_texture(
             (None, width, height, level0_rgba),
             (1, level1_width, level1_height, level1_rgba),
             (2, level2_width, level2_height, level2_rgba),
+            (3, level3_width, level3_height, level3_rgba),
         ),
     )
 
@@ -1148,6 +1159,38 @@ def _slice_segmented_rows_rgba(
         segmented.extend(row_rgba)
 
     return bytes(segmented)
+
+
+def _slice_offset_rows_rgba(
+    source_rgba: bytes,
+    start_pixel: int,
+    output_width: int,
+    output_height: int,
+    source_group_pixels: int,
+    row_offsets: tuple[int, ...],
+) -> bytes:
+    output_row_size = output_width * 4
+    source_group_size = source_group_pixels * 4
+    source_start = start_pixel * 4
+    rows_per_group = max(1, len(row_offsets))
+    rows = bytearray()
+
+    for output_row in range(output_height):
+        group_index = output_row // rows_per_group
+        row_in_group = output_row % rows_per_group
+        row_start = (
+            source_start
+            + (group_index * source_group_size)
+            + (row_offsets[row_in_group] * 4)
+        )
+        rows.extend(
+            (
+                source_rgba[row_start : row_start + output_row_size]
+                + b"\x00" * output_row_size
+            )[:output_row_size]
+        )
+
+    return bytes(rows)
 
 
 def _stitch_rows_rgba(
