@@ -20,12 +20,12 @@ html[data-theme="light"] {
 }
 
 html[data-theme="dark"] {
-  --pst-color-primary: #8bd0b3;
+  --pst-color-primary: #198754;
   --pst-color-secondary: #e1a185;
-  --pst-color-link: #8bd0b3;
+  --pst-color-link: #198754;
   --pst-color-link-hover: #f0baa4;
   --pst-color-inline-code: #a5dfc6;
-  --pst-color-inline-code-links: #8bd0b3;
+  --pst-color-inline-code-links: #198754;
 }
 
 body {
