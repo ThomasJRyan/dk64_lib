@@ -493,6 +493,23 @@ def _decode_packed_mipmap_levels(
         return _decode_packed_ci4_mipmap_levels(texture, raw_texture, raw_palette)
 
     if (
+        texture.fmt == 2
+        and texture.size in (0, 1)
+        and texture.width == 32
+        and texture.height == 32
+        and _has_packed_mipmap_storage(
+            raw_texture,
+            texture.size,
+            _standard_mipmap_storage_pixels(texture.width, texture.height),
+        )
+    ):
+        return _decode_standard_indexed_mipmap_levels(
+            texture,
+            raw_texture,
+            raw_palette,
+        )
+
+    if (
         texture.fmt == 0
         and texture.size == 2
         and texture.width == 32
@@ -548,6 +565,27 @@ def _decode_packed_ci4_64x32_mipmap_levels(
         palette_data=raw_palette,
     )
     return _packed_ci4_64x32_mipmap_levels(texture.width, texture.height, base_rgba)
+
+
+def _decode_standard_indexed_mipmap_levels(
+    texture: _TextureKey,
+    raw_texture: bytes | None,
+    raw_palette: bytes | None,
+) -> tuple[_DecodedTextureLevel, ...]:
+    base_width, base_height = _raw_texture_dimensions(
+        raw_texture,
+        texture.size,
+        texture.width,
+    )
+    base_rgba = decode_texture(
+        raw_texture,
+        fmt=texture.fmt,
+        size=texture.size,
+        width=base_width,
+        height=base_height,
+        palette_data=raw_palette,
+    )
+    return _standard_mipmap_levels(texture.width, texture.height, base_rgba)
 
 
 def _decode_packed_rgba_mipmap_levels(
@@ -684,6 +722,49 @@ def _packed_ci4_64x32_mipmap_levels(
     )
 
 
+def _standard_mipmap_levels(
+    width: int,
+    height: int,
+    base_rgba: bytes,
+) -> tuple[_DecodedTextureLevel, ...]:
+    level0_width, level0_height = width, height
+    level1_width, level1_height = max(1, width // 2), max(1, height // 2)
+    level2_width, level2_height = max(1, width // 4), max(1, height // 4)
+    level3_width, level3_height = max(1, width // 8), max(1, height // 8)
+    level0_pixels = level0_width * level0_height
+    level1_pixels = level1_width * level1_height
+    level2_pixels = level2_width * level2_height
+    level2_start_pixel = level0_pixels + level1_pixels
+    level3_start_pixel = level2_start_pixel + level2_pixels
+
+    return (
+        _DecodedTextureLevel(
+            None,
+            level0_width,
+            level0_height,
+            _slice_flat_rgba(base_rgba, 0, level0_width, level0_height),
+        ),
+        _DecodedTextureLevel(
+            1,
+            level1_width,
+            level1_height,
+            _slice_flat_rgba(base_rgba, level0_pixels, level1_width, level1_height),
+        ),
+        _DecodedTextureLevel(
+            2,
+            level2_width,
+            level2_height,
+            _slice_flat_rgba(base_rgba, level2_start_pixel, level2_width, level2_height),
+        ),
+        _DecodedTextureLevel(
+            3,
+            level3_width,
+            level3_height,
+            _slice_flat_rgba(base_rgba, level3_start_pixel, level3_width, level3_height),
+        ),
+    )
+
+
 def _packed_rgba_mipmap_levels(
     width: int,
     height: int,
@@ -766,6 +847,15 @@ def _packed_ci4_mipmap_storage_pixels(width: int, height: int) -> int:
     )
 
 
+def _standard_mipmap_storage_pixels(width: int, height: int) -> int:
+    return (
+        (width * height)
+        + (max(1, width // 2) * max(1, height // 2))
+        + (max(1, width // 4) * max(1, height // 4))
+        + (max(1, width // 8) * max(1, height // 8))
+    )
+
+
 def _packed_ci4_64x32_mipmap_storage_pixels(width: int, height: int) -> int:
     level1_height = max(1, height // 2)
     level2_height = max(1, height // 4)
@@ -800,7 +890,7 @@ def _has_packed_mipmap_storage(
 
 
 _CI4_64X32_MIPMAP_TEST_SPEC = (208, 209, 2, 0, 64, 32)
-_BASE_ONLY_MIPMAP_TEST_SPECS = (
+_STANDARD_INDEXED_MIPMAP_TEST_SPECS = (
     (158, 159, 2, 1, 32, 32),
     (1272, 1273, 2, 0, 32, 32),
 )
@@ -828,7 +918,7 @@ def test_mipmap_export(
     if include_base_references:
         for reference in (
             _CI4_64X32_MIPMAP_TEST_SPEC,
-            *_BASE_ONLY_MIPMAP_TEST_SPECS,
+            *_STANDARD_INDEXED_MIPMAP_TEST_SPECS,
         ):
             if reference not in specs and _raw_texture_data(texture_data, reference[0]):
                 specs.append(reference)
@@ -877,8 +967,8 @@ def _test_mipmap_export_for_texture(
         size,
         width,
         height,
-    ) in _BASE_ONLY_MIPMAP_TEST_SPECS:
-        return _test_base_mipmap_export_for_texture(
+    ) in _STANDARD_INDEXED_MIPMAP_TEST_SPECS:
+        return _test_standard_mipmap_export_for_texture(
             folderpath,
             texture_index,
             palette_index,
@@ -1007,7 +1097,7 @@ def _test_mipmap_export_for_texture(
     return filepaths
 
 
-def _test_base_mipmap_export_for_texture(
+def _test_standard_mipmap_export_for_texture(
     folderpath: pathlib.Path,
     texture_index: int,
     palette_index: int | None,
@@ -1019,6 +1109,11 @@ def _test_base_mipmap_export_for_texture(
     base_height: int,
     base_rgba: bytes,
 ) -> list[pathlib.Path]:
+    outputs = [("base", base_width, base_height, base_rgba)]
+    outputs.extend(
+        (level.level, level.width, level.height, level.rgba)
+        for level in _standard_mipmap_levels(width, height, base_rgba)
+    )
     return _write_test_mipmap_outputs(
         folderpath,
         texture_index,
@@ -1027,7 +1122,7 @@ def _test_base_mipmap_export_for_texture(
         size,
         width,
         height,
-        (("base", base_width, base_height, base_rgba),),
+        tuple(outputs),
     )
 
 
