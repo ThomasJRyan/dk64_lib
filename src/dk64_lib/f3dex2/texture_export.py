@@ -585,7 +585,14 @@ def _decode_standard_indexed_mipmap_levels(
         height=base_height,
         palette_data=raw_palette,
     )
-    return _standard_mipmap_levels(texture.width, texture.height, base_rgba)
+    return _standard_mipmap_levels(
+        texture.width,
+        texture.height,
+        base_rgba,
+        level0_swap_group_pixels=_standard_indexed_level0_swap_group_pixels(
+            texture.size
+        ),
+    )
 
 
 def _decode_packed_rgba_mipmap_levels(
@@ -726,6 +733,7 @@ def _standard_mipmap_levels(
     width: int,
     height: int,
     base_rgba: bytes,
+    level0_swap_group_pixels: int = 16,
 ) -> tuple[_DecodedTextureLevel, ...]:
     level0_width, level0_height = width, height
     level1_width, level1_height = max(1, width // 2), max(1, height // 2)
@@ -745,7 +753,7 @@ def _standard_mipmap_levels(
             _swap_odd_rows_rgba(
                 _slice_flat_rgba(base_rgba, 0, level0_width, level0_height),
                 source_width=level0_width,
-                group_pixels=16,
+                group_pixels=level0_swap_group_pixels,
             ),
         ),
         _DecodedTextureLevel(
@@ -781,6 +789,10 @@ def _standard_mipmap_levels(
             ),
         ),
     )
+
+
+def _standard_indexed_level0_swap_group_pixels(size: int) -> int:
+    return 8 if size == 1 else 16
 
 
 def _packed_rgba_mipmap_levels(
@@ -1132,7 +1144,12 @@ def _test_standard_mipmap_export_for_texture(
     outputs = [("base", base_width, base_height, base_rgba)]
     outputs.extend(
         (level.level, level.width, level.height, level.rgba)
-        for level in _standard_mipmap_levels(width, height, base_rgba)
+        for level in _standard_mipmap_levels(
+            width,
+            height,
+            base_rgba,
+            level0_swap_group_pixels=_standard_indexed_level0_swap_group_pixels(size),
+        )
     )
     return _write_test_mipmap_outputs(
         folderpath,

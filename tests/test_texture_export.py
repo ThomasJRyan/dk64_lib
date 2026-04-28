@@ -508,10 +508,14 @@ class TextureExportTest(unittest.TestCase):
         self.assertEqual(level0_size, (32, 32))
         expected_swapped_row = decode_texture(
             bytes(
-                tuple(range(8, 16))
-                + tuple(range(8))
-                + tuple(range(8, 16))
-                + tuple(range(8))
+                tuple(range(4, 8))
+                + tuple(range(4))
+                + tuple(range(12, 16))
+                + tuple(range(8, 12))
+                + tuple(range(4, 8))
+                + tuple(range(4))
+                + tuple(range(12, 16))
+                + tuple(range(8, 12))
             ),
             fmt=2,
             size=1,
