@@ -743,11 +743,13 @@ Geometry exports use textured GLB output by default. Pass
 ``geometry_format="dae"`` to ``Rom.export_geometries()`` or ``Rom.export_all()``
 to write another geometry format instead. ``Rom.export_textures()`` separately
 writes PNG files for geometry textures referenced by display lists. It uses the
-same texture-state reconstruction described on this page, so exported texture
-PNGs have reliable dimensions only when geometry display lists provide the
-format, size, palette, width, and height. Use ``Rom.export_assets()`` or
-``Rom.export_raw_tables()`` when you need raw bytes from texture tables that are
-not currently decoded standalone.
+same texture-state reconstruction described on this page, so those PNGs have
+reliable dimensions from display-list format, size, palette, width, and height.
+For table 7, table 14, and unreferenced table 25 entries, ``Rom.export_textures()``
+also writes best-effort RGBA5551 PNGs when the decompressed byte length matches
+a known size guess. Guessed outputs include ``guess`` in their filenames. Use
+``Rom.export_assets()`` or ``Rom.export_raw_tables()`` when you need raw bytes
+from texture tables.
 
 Testing Coverage
 ----------------

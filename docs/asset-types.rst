@@ -23,7 +23,7 @@ The high-level ROM facade currently knows these table families:
        glTF/PNG, GLB, or DAE/PNG files.
    * - ``7``
      - Textures
-     - Available through raw asset export.
+     - Exported as guessed PNGs when byte size matches a known RGBA5551 size.
    * - ``8``
      - Cutscenes
      - Wrapped as raw cutscene records and exported as binary files.
@@ -32,10 +32,11 @@ The high-level ROM facade currently knows these table families:
      - Parsed into text lines, fragments, normal text records, and sprite tokens.
    * - ``14``
      - Textures
-     - Available through raw asset export.
+     - Exported as guessed PNGs when byte size matches a known RGBA5551 size.
    * - ``25``
      - Geometry textures
-     - Decoded to PNG when referenced by geometry display lists.
+     - Decoded to PNG from display-list metadata, or guessed by size when
+       unreferenced.
 
 Text Data
 ---------
@@ -80,7 +81,10 @@ Texture Data
 :class:`dk64_lib.data_types.texture.TextureData` currently wraps raw texture
 table entries. ``Rom.export_textures()`` and the textured geometry export path
 decode referenced table 25 texture bytes into PNG images when geometry display
-lists provide enough format, size, palette, and tile information.
+lists provide enough format, size, palette, and tile information. For table 7,
+table 14, and unreferenced table 25 entries, ``Rom.export_textures()`` also
+writes best-effort RGBA5551 PNGs when the decompressed byte length matches a
+known size guess.
 
 Supported texture decoding includes:
 

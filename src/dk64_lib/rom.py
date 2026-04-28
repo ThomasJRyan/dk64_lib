@@ -13,12 +13,23 @@ from dk64_lib.f3dex2.texture_export import (
     TextureAnimationFrames,
     TextureImageFile,
     TexturedObjExporter,
+    decode_texture,
+    rgba_to_png,
 )
 from dk64_lib.constants import MAPS
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
 RAW_EXPORT_TABLES = (1, 7, 8, 12, 14, 25)
+GUESSED_TEXTURE_TABLES = (7, 14, 25)
+# Size guesses adapted from dk64-hacking-scripts' texture_size_guesser.py.
+TEXTURE_SIZE_GUESSES = {
+    0x1000: (32, 64),
+    0x800: (32, 32),
+    0xFC0: (48, 42),
+    0xAA0: (32, 44),
+    0xF20: (44, 44),
+}
 
 
 @dataclass(frozen=True)
@@ -138,19 +149,27 @@ class Rom:
     def geometry_tables(self):
         return [geometry_data for geometry_data in self.get_geometry_data()]
 
-    def export_textures(self, folderpath: str | Path = "exports/textures") -> list[Path]:
+    def export_textures(
+        self,
+        folderpath: str | Path = "exports/textures",
+        include_guessed: bool = True,
+    ) -> list[Path]:
         """Export decoded geometry textures as PNG images."""
         root = Path(folderpath)
         return [
             self._write_bytes(root / image.filename, image.data)
-            for image in self.create_texture_images(texture_folder="table_25")
+            for image in self.create_texture_images(
+                texture_folder="table_25",
+                include_guessed=include_guessed,
+            )
         ]
 
     def create_texture_images(
         self,
         texture_folder: str = "table_25",
+        include_guessed: bool = True,
     ) -> tuple[TextureImageFile, ...]:
-        """Create PNG images for geometry textures with display-list metadata."""
+        """Create PNG images for texture entries with known or guessed metadata."""
         display_lists = tuple(
             display_list
             for geometry_data in self.geometry_tables
@@ -158,10 +177,65 @@ class Rom:
             for display_list in geometry_data.display_lists
         )
         exporter = TexturedObjExporter(self.get_geometry_texture_data())
-        return exporter.export_texture_images(
-            display_lists,
-            texture_folder=texture_folder,
+        referenced_geometry_texture_indices = exporter.texture_image_indices(
+            display_lists
         )
+        images = list(
+            exporter.export_texture_images(
+                display_lists,
+                texture_folder=texture_folder,
+            )
+        )
+        if include_guessed:
+            images.extend(
+                self._guessed_texture_images(
+                    referenced_geometry_texture_indices=set(
+                        referenced_geometry_texture_indices
+                    ),
+                )
+            )
+        return tuple(images)
+
+    def _guessed_texture_images(
+        self,
+        referenced_geometry_texture_indices: set[int],
+    ) -> tuple[TextureImageFile, ...]:
+        images = list()
+        for table_id in GUESSED_TEXTURE_TABLES:
+            table_folder = f"table_{table_id:02d}"
+            for texture_index, table_data in enumerate(
+                self.generate_rom_table_data([table_id])
+            ):
+                if (
+                    table_id == 25
+                    and texture_index in referenced_geometry_texture_indices
+                ):
+                    continue
+                raw_data = table_data["raw_data"]
+                dimensions = TEXTURE_SIZE_GUESSES.get(len(raw_data))
+                if dimensions is None:
+                    continue
+
+                width, height = dimensions
+                rgba = decode_texture(
+                    raw_data,
+                    fmt=0,
+                    size=2,
+                    width=width,
+                    height=height,
+                )
+                images.append(
+                    TextureImageFile(
+                        filename=(
+                            f"{table_folder}/"
+                            f"{texture_index:06d}_"
+                            f"offset_{table_data['offset']:08x}_"
+                            f"guess_f0_s2_{width}x{height}.png"
+                        ),
+                        data=rgba_to_png(width, height, rgba),
+                    )
+                )
+        return tuple(images)
 
     def export_text(self, folderpath: str | Path = "exports/text") -> list[Path]:
         """Export parsed text tables as UTF-8 text files."""

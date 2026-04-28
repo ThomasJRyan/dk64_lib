@@ -164,9 +164,9 @@ Textures
 
    paths = rom.export_textures("dk64_export/textures")
 
-Texture export writes PNG files for geometry textures referenced by display
-lists. Those display lists provide the F3DEX2 format, size, palette, width, and
-height information needed to decode the raw table 25 bytes:
+Texture export writes PNG files from two metadata sources. Geometry-referenced
+table 25 textures use F3DEX2 display-list state, which provides the format,
+size, palette, width, and height:
 
 .. code-block:: text
 
@@ -174,9 +174,18 @@ height information needed to decode the raw table 25 bytes:
    table_25/tex_2_pal_none_f0_s2_32x32.png
    table_25/tex_158_pal_159_f2_s1_32x32_mip1_16x16.png
 
-Tables 7 and 14, and unreferenced entries from table 25, do not currently have
-enough parsed metadata for reliable standalone image export. Use
-``Rom.export_assets()`` or ``Rom.export_raw_tables()`` when you need their
+Table 7, table 14, and unreferenced table 25 entries use a best-effort size
+guess based on decompressed byte length. The current guess table treats these
+sizes as RGBA5551: ``0x1000`` as ``32x64``, ``0x800`` as ``32x32``,
+``0xfc0`` as ``48x42``, ``0xaa0`` as ``32x44``, and ``0xf20`` as ``44x44``.
+Guessed files include ``guess`` in their filenames:
+
+.. code-block:: text
+
+   table_07/000000_offset_00123456_guess_f0_s2_32x32.png
+   table_14/000000_offset_00123456_guess_f0_s2_32x64.png
+
+Use ``Rom.export_assets()`` or ``Rom.export_raw_tables()`` when you need exact
 decompressed ``.bin`` records for analysis.
 
 Cutscenes

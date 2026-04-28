@@ -290,6 +290,15 @@ class TexturedObjExporter:
         texture_plans = self._texture_plans_for_groups(groups)
         return self._texture_images_for_plans(texture_plans, texture_folder)
 
+    def texture_image_indices(self, display_lists: Iterable[object]) -> tuple[int, ...]:
+        """Return texture image table indices identified by F3DEX2 display lists."""
+        groups = tuple(self._iter_mesh_groups(display_lists))
+        return tuple(
+            texture.image_index
+            for texture in dict.fromkeys(group.texture for group in groups)
+            if texture
+        )
+
     def _texture_plans_for_groups(
         self,
         groups: tuple[_MeshGroup, ...],

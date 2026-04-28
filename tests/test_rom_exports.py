@@ -387,18 +387,47 @@ class RomExportTest(unittest.TestCase):
             )
         ]
 
+        def generate_rom_table_data(tables: list[int]):
+            table_id = tables[0]
+            if table_id == 7:
+                yield {"offset": 0x07, "raw_data": b"\x00" * 0x800}
+            elif table_id == 14:
+                yield {"offset": 0x0E, "raw_data": b"\x00" * 0xAA0}
+            elif table_id == 25:
+                yield {"offset": 0x19, "raw_data": b"\x00" * 0x800}
+                yield {"offset": 0x1A, "raw_data": b"\x00" * 0x1000}
+
+        rom.generate_rom_table_data = generate_rom_table_data
+
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             texture_paths = Rom.export_textures(rom, root / "textures")
-            texture_path = (
+            geometry_texture_path = (
                 root
                 / "textures"
                 / "table_25"
                 / "tex_0_pal_none_f0_s2_2x2.png"
             )
+            guessed_paths = [
+                root
+                / "textures"
+                / "table_07"
+                / "000000_offset_00000007_guess_f0_s2_32x32.png",
+                root
+                / "textures"
+                / "table_14"
+                / "000000_offset_0000000e_guess_f0_s2_32x44.png",
+                root
+                / "textures"
+                / "table_25"
+                / "000001_offset_0000001a_guess_f0_s2_32x64.png",
+            ]
 
-            self.assertEqual(texture_paths, [texture_path])
-            self.assertTrue(texture_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertEqual(texture_paths, [geometry_texture_path, *guessed_paths])
+            for texture_path in texture_paths:
+                self.assertTrue(
+                    texture_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+                )
             self.assertEqual(list((root / "textures").rglob("*.bin")), [])
 
     def test_export_assets_write_raw_table_entries(self):
