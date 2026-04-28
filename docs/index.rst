@@ -38,7 +38,7 @@ DK64 Lib Documentation
      <a class="doc-card" href="textured-geometry.html">
        <span class="card-label">Pipeline</span>
        <strong>Textured Geometry</strong>
-       <span>Follow OBJ export, UV mapping, vertex colors, texture decoding, and DK64 mipmaps.</span>
+       <span>Follow OBJ/DAE export, UV mapping, vertex colors, texture decoding, and DK64 mipmaps.</span>
      </a>
      <a class="doc-card" href="api/index.html">
        <span class="card-label">API</span>
@@ -56,7 +56,7 @@ The current library surface covers:
 * ROM metadata and pointer table traversal through :class:`dk64_lib.rom.Rom`.
 * Text parsing into immutable text line and fragment records.
 * Geometry parsing into display lists, vertices, and triangles.
-* Textured OBJ export with companion MTL files and PNG textures.
+* Textured OBJ/DAE export with companion material data and PNG textures.
 * Raw exports for known texture, cutscene, text, geometry, and asset tables.
 
 The documentation is intentionally structured around ROM concepts first and API

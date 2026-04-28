@@ -45,12 +45,28 @@ rom = Rom("Donkey Kong 64 (USA).z64")
 rom.export_geometries("dk64_export/geometries")
 ```
 
+Export every map to DAE with PNG texture assets:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.export_geometries("dk64_export/geometries", geometry_format="dae")
+```
+
 Export a single map as textured OBJ:
 ```python
 from dk64_lib.rom import Rom
 rom = Rom("Donkey Kong 64 (USA).z64")
 
 rom.geometry_tables[0].save_to_obj("0.obj")
+```
+
+Export a single map as textured DAE:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.geometry_tables[0].save_to_dae("0.dae")
 ```
 
 Export a legacy geometry-only OBJ:

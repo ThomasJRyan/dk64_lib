@@ -186,8 +186,12 @@ class Rom:
         self,
         folderpath: str | Path = "exports/geometries",
         include_textures: bool = True,
+        geometry_format: Literal["obj", "dae"] = "obj",
     ) -> list[Path]:
-        """Export geometry tables as OBJ files, textured by default."""
+        """Export geometry tables as OBJ or DAE files, textured by default."""
+        if geometry_format not in ("obj", "dae"):
+            raise ValueError("geometry_format must be 'obj' or 'dae'")
+
         exported_paths = list()
         root = Path(folderpath)
         root.mkdir(parents=True, exist_ok=True)
@@ -203,9 +207,14 @@ class Rom:
                 )
                 continue
 
-            obj_path = root / f"{filename_stem}.obj"
-            written_paths = geometry_data.save_to_obj(
-                obj_path.name,
+            geometry_path = root / f"{filename_stem}.{geometry_format}"
+            save_geometry = (
+                geometry_data.save_to_dae
+                if geometry_format == "dae"
+                else geometry_data.save_to_obj
+            )
+            written_paths = save_geometry(
+                geometry_path.name,
                 str(root),
                 include_textures=include_textures,
             )
@@ -248,6 +257,7 @@ class Rom:
         folderpath: str | Path = "exports",
         include_textures: bool = True,
         include_assets: bool = True,
+        geometry_format: Literal["obj", "dae"] = "obj",
     ) -> dict[str, list[Path]]:
         """Export all currently supported ROM data to organized folders."""
         root = Path(folderpath)
@@ -255,6 +265,7 @@ class Rom:
             "geometries": self.export_geometries(
                 root / "geometries",
                 include_textures=include_textures,
+                geometry_format=geometry_format,
             ),
             "textures": self.export_textures(root / "textures"),
             "text": self.export_text(root / "text"),

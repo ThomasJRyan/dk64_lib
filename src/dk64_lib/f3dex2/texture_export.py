@@ -7,9 +7,15 @@ import zlib
 from dataclasses import dataclass
 from typing import Iterable
 
+from collada import Collada
+from collada import geometry as collada_geometry
+from collada import material as collada_material
+from collada import scene, source
+from collada.common import E, tag
 from dk64_lib.components.triangle import Triangle
 from dk64_lib.components.vertex import Vertex
 from dk64_lib.f3dex2 import commands
+from numpy import array as numpy_array
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +36,12 @@ class TexturedObjExport:
     mtl_data: str
     images: tuple[TextureImageFile, ...]
     support_files: tuple[TexturedObjSupportFile, ...] = tuple()
+
+
+@dataclass(frozen=True, slots=True)
+class TexturedDaeExport:
+    dae: Collada
+    images: tuple[TextureImageFile, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -445,6 +457,33 @@ class TexturedObjExporter:
         return getattr(texture, "raw_data", None)
 
 
+class TexturedDaeExporter(TexturedObjExporter):
+    def export(
+        self,
+        display_lists: Iterable[object],
+        texture_folder: str = "textures",
+    ) -> TexturedDaeExport:
+        groups = tuple(self._iter_mesh_groups(display_lists))
+        textures = tuple(
+            texture
+            for texture in dict.fromkeys(group.texture for group in groups)
+            if texture
+        )
+        texture_plans = tuple(
+            _TextureExportPlan(texture, self._decoded_texture_levels(texture))
+            for texture in textures
+        )
+        images = tuple(
+            image
+            for texture_plan in texture_plans
+            for image in self._texture_images(texture_plan, texture_folder)
+        )
+        return TexturedDaeExport(
+            dae=_dae_mesh(groups, texture_plans, texture_folder),
+            images=images,
+        )
+
+
 def decode_texture(
     data: bytes | None,
     fmt: int,
@@ -519,6 +558,26 @@ def save_textured_obj_export(
         support_path.parent.mkdir(parents=True, exist_ok=True)
         support_path.write_text(support_file.data)
         written_paths.append(support_path)
+
+    return written_paths
+
+
+def save_textured_dae_export(
+    export: TexturedDaeExport,
+    dae_filename: str,
+    folderpath: str = ".",
+) -> list[pathlib.Path]:
+    folder = pathlib.Path(folderpath)
+    dae_path = folder / dae_filename
+    dae_path.parent.mkdir(parents=True, exist_ok=True)
+    export.dae.write(dae_path)
+    written_paths = [dae_path]
+
+    for image in export.images:
+        image_path = folder / image.filename
+        image_path.parent.mkdir(parents=True, exist_ok=True)
+        image_path.write_bytes(image.data)
+        written_paths.append(image_path)
 
     return written_paths
 
@@ -611,6 +670,214 @@ for material_name in TRANSPARENT_MATERIALS:
 
 print(f\"Configured {{len(TRANSPARENT_MATERIALS)}} transparent DK64 material(s).\")
 """
+
+
+def _dae_mesh(
+    groups: tuple[_MeshGroup, ...],
+    texture_plans: tuple[_TextureExportPlan, ...],
+    texture_folder: str,
+) -> Collada:
+    mesh = Collada()
+    materials_by_symbol = _dae_materials_by_symbol(
+        mesh,
+        texture_plans,
+        texture_folder,
+    )
+    geometry_nodes = list()
+
+    for group_index, group in enumerate(groups):
+        if not group.vertices or not group.triangles:
+            continue
+        geom = _dae_geometry_for_group(mesh, group, group_index)
+        mesh.geometries.append(geom)
+        material_symbol = _dae_material_symbol(group.texture)
+        material_inputs = [("TEX0", "TEXCOORD", "0")] if group.texture else []
+        material_node = scene.MaterialNode(
+            material_symbol,
+            materials_by_symbol[material_symbol],
+            material_inputs,
+        )
+        geometry_nodes.append(scene.GeometryNode(geom, [material_node]))
+
+    node = scene.Node("node0", children=geometry_nodes)
+    dae_scene = scene.Scene("myscene", [node])
+    mesh.scenes.append(dae_scene)
+    mesh.scene = dae_scene
+    return mesh
+
+
+def _dae_materials_by_symbol(
+    mesh: Collada,
+    texture_plans: tuple[_TextureExportPlan, ...],
+    texture_folder: str,
+) -> dict[str, collada_material.Material]:
+    materials = {"vertex-material": _dae_vertex_material(mesh)}
+    for texture_plan in texture_plans:
+        symbol = texture_plan.texture.material_name
+        materials[symbol] = _dae_texture_material(mesh, texture_plan, texture_folder)
+    return materials
+
+
+def _dae_vertex_material(mesh: Collada) -> collada_material.Material:
+    effect = collada_material.Effect(
+        "vertex-effect",
+        [],
+        "phong",
+        diffuse=(1.0, 1.0, 1.0, 1.0),
+        specular=(0.0, 0.0, 0.0, 1.0),
+    )
+    effect.transparent = None
+    effect.transparency = None
+    mat = collada_material.Material("vertex-material", "vertex-material", effect)
+    mesh.effects.append(effect)
+    mesh.materials.append(mat)
+    return mat
+
+
+def _dae_texture_material(
+    mesh: Collada,
+    texture_plan: _TextureExportPlan,
+    texture_folder: str,
+) -> collada_material.Material:
+    texture = texture_plan.texture
+    color_map, params = _dae_texture_map(
+        mesh,
+        texture.material_name,
+        _dae_texture_path(texture_folder, texture.image_filename),
+        texture,
+    )
+    has_transparency = _texture_level_has_transparency(texture_plan.levels[0])
+    transparent = None
+    transparency = None
+    if has_transparency:
+        alpha_map, alpha_params = _dae_texture_map(
+            mesh,
+            f"{texture.material_name}-alpha",
+            _dae_texture_path(texture_folder, _alpha_mask_filename(texture)),
+            texture,
+        )
+        params.extend(alpha_params)
+        transparent = alpha_map
+        transparency = 1.0
+
+    effect = collada_material.Effect(
+        f"{texture.material_name}-effect",
+        params,
+        "phong",
+        diffuse=color_map,
+        specular=(0.0, 0.0, 0.0, 1.0),
+        transparent=transparent,
+        transparency=transparency,
+    )
+    if not has_transparency:
+        # pycollada defaults to writing a transparency value; omit it for
+        # opaque textures so importers do not infer unintended alpha behavior.
+        effect.transparent = None
+        effect.transparency = None
+    mat = collada_material.Material(
+        texture.material_name,
+        texture.material_name,
+        effect,
+    )
+    mesh.effects.append(effect)
+    mesh.materials.append(mat)
+    return mat
+
+
+def _dae_texture_map(
+    mesh: Collada,
+    name: str,
+    path: str,
+    texture: _TextureKey,
+) -> tuple[collada_material.Map, list[object]]:
+    image = collada_material.CImage(f"{name}-image", path)
+    mesh.images.append(image)
+    surface = collada_material.Surface(f"{name}-surface", image)
+    sampler = collada_material.Sampler2D(f"{name}-sampler", surface)
+    _dae_set_sampler_wrap(sampler, texture)
+    return collada_material.Map(sampler, "TEX0"), [surface, sampler]
+
+
+def _dae_set_sampler_wrap(
+    sampler: collada_material.Sampler2D,
+    texture: _TextureKey,
+) -> None:
+    sampler_node = sampler.xmlnode.find(tag("sampler2D"))
+    if sampler_node is None:
+        return
+    sampler_node.append(E.wrap_s("CLAMP" if texture.clamp_s else "WRAP"))
+    sampler_node.append(E.wrap_t("CLAMP" if texture.clamp_t else "WRAP"))
+
+
+def _dae_texture_path(texture_folder: str, filename: str) -> str:
+    return pathlib.PurePosixPath(texture_folder, filename).as_posix()
+
+
+def _dae_geometry_for_group(
+    mesh: Collada,
+    group: _MeshGroup,
+    group_index: int,
+) -> collada_geometry.Geometry:
+    geom_id = f"geometry{group_index}"
+    vertices = list()
+    colors = list()
+    texcoords = list()
+    triangles = list()
+
+    for vertex in group.vertices:
+        vertices.extend((vertex.x, vertex.y, vertex.z))
+        colors.extend(
+            (
+                vertex.xr / 255,
+                vertex.yg / 255,
+                vertex.zb / 255,
+                vertex.alpha / 255,
+            )
+        )
+        if group.texture is not None:
+            texcoords.extend(_uv_for_vertex(vertex, group.texture))
+
+    for tri in group.triangles:
+        triangles.extend((tri.v1, tri.v2, tri.v3))
+
+    src_vertices = source.FloatSource(
+        f"{geom_id}-vertices",
+        numpy_array(vertices),
+        ("X", "Y", "Z"),
+    )
+    src_colors = source.FloatSource(
+        f"{geom_id}-colors",
+        numpy_array(colors),
+        ("R", "G", "B", "A"),
+    )
+    sources = [src_vertices, src_colors]
+    input_list = source.InputList()
+    input_list.addInput(0, "VERTEX", f"#{geom_id}-vertices")
+    input_list.addInput(0, "COLOR", f"#{geom_id}-colors")
+
+    if group.texture is not None:
+        src_texcoords = source.FloatSource(
+            f"{geom_id}-texcoords",
+            numpy_array(texcoords),
+            ("S", "T"),
+        )
+        sources.append(src_texcoords)
+        input_list.addInput(0, "TEXCOORD", f"#{geom_id}-texcoords", set="0")
+
+    geom = collada_geometry.Geometry(mesh, geom_id, geom_id, sources)
+    triset = geom.createTriangleSet(
+        numpy_array(triangles),
+        input_list,
+        _dae_material_symbol(group.texture),
+    )
+    geom.primitives.append(triset)
+    return geom
+
+
+def _dae_material_symbol(texture: _TextureKey | None) -> str:
+    if texture is None:
+        return "vertex-material"
+    return texture.material_name
 
 
 def _decode_packed_mipmap_levels(

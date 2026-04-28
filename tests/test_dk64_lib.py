@@ -103,16 +103,34 @@ class RomTest(unittest.TestCase):
 
     def test_geometry_dae_export(self):
         geometry_table = self.rom.geometry_tables[0]
-        dae = geometry_table.create_dae()
+        dae = geometry_table.create_dae(include_textures=False)
 
         self.assertEqual(len(dae.geometries), 1)
         self.assertEqual(len(dae.geometries[0].primitives), 1)
 
         with TemporaryDirectory() as temp_dir:
-            geometry_table.save_to_dae("0.dae", temp_dir)
+            geometry_table.save_to_dae("0.dae", temp_dir, include_textures=False)
             dae_path = Path(temp_dir) / "0.dae"
             self.assertTrue(dae_path.exists())
             self.assertGreater(dae_path.stat().st_size, 0)
+
+    def test_geometry_textured_dae_export(self):
+        geometry_table = self.rom.geometry_tables[0]
+        export = geometry_table.create_textured_dae()
+
+        self.assertGreater(len(export.dae.geometries), 0)
+        self.assertGreater(len(export.dae.materials), 0)
+        self.assertGreater(len(export.images), 0)
+
+        with TemporaryDirectory() as temp_dir:
+            written_paths = geometry_table.save_to_dae("0.dae", temp_dir)
+            dae_path = Path(temp_dir) / "0.dae"
+            texture_paths = [path for path in written_paths if path.suffix == ".png"]
+            self.assertEqual(written_paths[0], dae_path)
+            self.assertTrue(dae_path.exists())
+            self.assertGreater(dae_path.stat().st_size, 0)
+            self.assertGreater(len(texture_paths), 0)
+            self.assertTrue(texture_paths[0].exists())
 
 
 class FileIOTest(unittest.TestCase):

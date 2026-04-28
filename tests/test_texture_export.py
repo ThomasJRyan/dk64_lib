@@ -7,11 +7,13 @@ from types import SimpleNamespace
 
 from dk64_lib.f3dex2.display_list import DisplayList
 from dk64_lib.f3dex2.texture_export import (
+    TexturedDaeExporter,
     TexturedObjExport,
     TexturedObjExporter,
     TexturedObjSupportFile,
     decode_texture,
     rgba_to_png,
+    save_textured_dae_export,
     save_textured_obj_export,
     test_mipmap_export as export_test_mipmap,
 )
@@ -363,6 +365,63 @@ class TextureExportTest(unittest.TestCase):
             export.mtl_data,
         )
         self.assertNotIn("map_d", export.mtl_data)
+
+    def test_dae_exporter_writes_textured_materials_and_alpha(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+            cm_t=2,
+        )
+
+        export = TexturedDaeExporter(texture_data).export([display_list])
+
+        self.assertEqual(
+            [image.filename for image in export.images],
+            [
+                "textures/tex_0_pal_none_f0_s2_2x2_clamp_t.png",
+                "textures/tex_0_pal_none_f0_s2_2x2_clamp_t_alpha.png",
+            ],
+        )
+        self.assertEqual(
+            [image.path for image in export.dae.images],
+            [
+                "textures/tex_0_pal_none_f0_s2_2x2_clamp_t.png",
+                "textures/tex_0_pal_none_f0_s2_2x2_clamp_t_alpha.png",
+            ],
+        )
+        self.assertEqual(len(export.dae.geometries), 1)
+        self.assertEqual(len(export.dae.geometries[0].primitives), 1)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dae_path = Path(tmpdir) / "model.dae"
+            export.dae.write(dae_path)
+            dae_data = dae_path.read_text()
+
+        self.assertIn('semantic="TEX0" input_semantic="TEXCOORD"', dae_data)
+        self.assertIn("<wrap_t>CLAMP</wrap_t>", dae_data)
+        self.assertIn(
+            '<texture texture="tex_0_pal_none_f0_s2_2x2_clamp_t-sampler" '
+            'texcoord="TEX0"',
+            dae_data,
+        )
+        self.assertIn(
+            '<texture texture="tex_0_pal_none_f0_s2_2x2_clamp_t-alpha-sampler" '
+            'texcoord="TEX0"',
+            dae_data,
+        )
 
     def test_exporter_uses_texture_command_tile_without_exporting_mip_levels(self):
         texture_data = [
@@ -1477,6 +1536,49 @@ class TextureExportTest(unittest.TestCase):
                 (export_folder / "model.blender.py").read_text(),
                 "print('configured')\n",
             )
+
+    def test_save_textured_dae_export_writes_assets(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+        )
+        export = TexturedDaeExporter(texture_data).export([display_list])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_folder = Path(tmpdir) / "nested"
+            written_paths = save_textured_dae_export(
+                export,
+                "model.dae",
+                export_folder,
+            )
+
+            self.assertEqual(
+                written_paths,
+                [
+                    export_folder / "model.dae",
+                    export_folder
+                    / "textures"
+                    / "tex_0_pal_none_f0_s2_2x2.png",
+                ],
+            )
+            self.assertTrue((export_folder / "model.dae").exists())
+            self.assertTrue(written_paths[-1].exists())
+            dae_data = (export_folder / "model.dae").read_text()
+            self.assertNotIn("<transparent>", dae_data)
+            self.assertNotIn("<transparency>", dae_data)
 
 
 if __name__ == "__main__":

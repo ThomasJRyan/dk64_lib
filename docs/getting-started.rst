@@ -65,12 +65,18 @@ Each line exposes a combined ``text`` property.
 Export Geometry
 ---------------
 
-Geometry exports are written as OBJ files. Textured exports also create MTL and
-PNG files.
+Geometry exports are written as OBJ files by default. Textured OBJ exports also
+create MTL and PNG files.
 
 .. code-block:: python
 
    rom.export_geometries("dk64_export/geometries")
+
+Use COLLADA when you want a richer geometry container:
+
+.. code-block:: python
+
+   rom.export_geometries("dk64_export/geometries", geometry_format="dae")
 
 Export a single geometry table entry:
 
@@ -78,10 +84,13 @@ Export a single geometry table entry:
 
    geometry = rom.geometry_tables[0]
    geometry.save_to_obj("map_000.obj", "dk64_export/geometries")
+   geometry.save_to_dae("map_000.dae", "dk64_export/geometries")
 
-By default, OBJ export writes vertex colors, UV coordinates for textured mesh
-groups, MTL materials, and decoded PNG textures. See
-:doc:`textured-geometry` for the full OBJ, texture, and packed mipmap pipeline.
+By default, OBJ export writes RGB vertex colors, UV coordinates for textured
+mesh groups, MTL materials, and decoded PNG textures. DAE export writes RGBA
+vertex colors, UV coordinates, material effects, sampler clamp hints, and the
+same decoded PNG textures. See :doc:`textured-geometry` for the full geometry,
+texture, and packed mipmap pipeline.
 
 Next Steps
 ----------

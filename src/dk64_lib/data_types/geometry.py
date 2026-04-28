@@ -13,8 +13,11 @@ from dk64_lib.f3dex2.display_list import (
     create_display_lists,
 )
 from dk64_lib.f3dex2.texture_export import (
+    TexturedDaeExport,
+    TexturedDaeExporter,
     TexturedObjExport,
     TexturedObjExporter,
+    save_textured_dae_export,
     save_textured_obj_export,
 )
 
@@ -182,6 +185,18 @@ class GeometryData(BaseData):
             texture_folder=texture_folder,
         )
 
+    def create_textured_dae(
+        self,
+        texture_folder: str = "textures",
+    ) -> TexturedDaeExport:
+        """Creates DAE and texture image data for this geometry."""
+        texture_data = self.rom.get_geometry_texture_data() if self.rom else tuple()
+        exporter = TexturedDaeExporter(texture_data)
+        return exporter.export(
+            self.display_lists,
+            texture_folder=texture_folder,
+        )
+
     def save_to_obj(
         self,
         filename: str,
@@ -221,12 +236,22 @@ class GeometryData(BaseData):
         )
         return save_textured_obj_export(export, filename, folderpath)
 
-    def create_dae(self) -> Collada:
+    def create_dae(
+        self,
+        include_textures: bool = True,
+        texture_folder: str = "textures",
+    ) -> Collada:
         """Creates a dae file out of the geometry data
 
         Returns:
             Collada: dae file
         """
+        if include_textures:
+            return self.create_textured_dae(texture_folder).dae
+        return self._create_geometry_only_dae()
+
+    def _create_geometry_only_dae(self) -> Collada:
+        """Creates a DAE file with geometry and vertex colors only."""
         mesh = Collada()
         
         vertex_data = list()
@@ -285,12 +310,28 @@ class GeometryData(BaseData):
         
         return mesh
         
-    def save_to_dae(self, filename: str, folderpath: str = ".") -> None:
+    def save_to_dae(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = True,
+        texture_folder: str = "textures",
+    ) -> list[pathlib.Path]:
         """Save geometry data to dae format
 
         Args:
             filename (str): Name of dae file
             folderpath (str, optional): Folder path to save dae to. Defaults to ".".
+            include_textures (bool, optional): Whether to export DAE materials and
+                texture files alongside the DAE. Defaults to True.
+            texture_folder (str, optional): Folder for exported texture images
+                when include_textures is True. Defaults to "textures".
         """
+        if include_textures:
+            export = self.create_textured_dae(texture_folder=texture_folder)
+            return save_textured_dae_export(export, filename, folderpath)
+
         filepath = pathlib.Path(folderpath, filename)
-        self.create_dae().write(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        self._create_geometry_only_dae().write(filepath)
+        return [filepath]

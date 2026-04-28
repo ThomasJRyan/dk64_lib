@@ -2,13 +2,14 @@ Textured Geometry Pipeline
 ==========================
 
 This page documents how ``dk64_lib`` turns DK64 geometry display lists into
-OBJ, MTL, and PNG files. It is intended to be a human-readable map of the
+OBJ, MTL, DAE, and PNG files. It is intended to be a human-readable map of the
 current implementation rather than a replacement for the API reference.
 
 The relevant implementation lives primarily in:
 
 * ``dk64_lib.data_types.geometry.GeometryData``
 * ``dk64_lib.f3dex2.texture_export.TexturedObjExporter``
+* ``dk64_lib.f3dex2.texture_export.TexturedDaeExporter``
 * ``dk64_lib.f3dex2.texture_export.decode_texture``
 * ``dk64_lib.f3dex2.commands``
 * ``dk64_lib.components.vertex.Vertex``
@@ -23,24 +24,31 @@ Textured geometry export starts at one of the high-level helpers:
 * ``GeometryData.save_to_obj()``
 * ``GeometryData.save_to_textured_obj()``
 * ``GeometryData.create_textured_obj()``
+* ``GeometryData.save_to_dae()``
+* ``GeometryData.create_textured_dae()``
 
 Geometry OBJ export includes textures by default. ``GeometryData.save_to_obj()``
 has ``include_textures=True`` as its default, and ``Rom.export_geometries()`` and
 ``Rom.export_all()`` pass that default through unless the caller disables it.
+DAE export follows the same default through ``GeometryData.save_to_dae()`` and
+can be selected for ROM-level batch exports with ``geometry_format="dae"``.
 
 The export flow is:
 
 1. ``GeometryData`` parses a geometry table entry into display lists, vertex
    data, display-list chunk metadata, and expansion display lists.
-2. ``GeometryData.create_textured_obj()`` fetches the geometry texture table
+2. ``GeometryData.create_textured_obj()`` or
+   ``GeometryData.create_textured_dae()`` fetches the geometry texture table
    through ``rom.get_geometry_texture_data()``.
-3. ``TexturedObjExporter`` walks the geometry display lists, tracks the active
-   F3DEX2 texture state, and groups triangles by the texture that was active
-   when those triangles were emitted.
-4. The exporter writes OBJ text, MTL text, and in-memory PNG files.
+3. ``TexturedObjExporter`` or ``TexturedDaeExporter`` walks the geometry display
+   lists, tracks the active F3DEX2 texture state, and groups triangles by the
+   texture that was active when those triangles were emitted.
+4. The exporter writes OBJ text plus MTL text, or an in-memory DAE document, and
+   the in-memory PNG files needed by the materials.
 5. ``save_textured_obj_export()`` writes the OBJ, MTL, and PNG files to disk.
+   ``save_textured_dae_export()`` writes the DAE and PNG files.
 
-The production geometry export does not write packed mipmap base/reference
+The production geometry exporters do not write packed mipmap base/reference
 images. Those base images are only written by ``test_mipmap_export()``, which is
 a temporary visual debugging helper.
 
@@ -157,7 +165,8 @@ DK64 vertices are 16 bytes:
      - Blue vertex color channel.
    * - ``15``
      - ``alpha``
-     - Parsed and preserved. OBJ export currently omits alpha.
+     - Parsed and preserved. OBJ export currently omits alpha. DAE export
+       writes it in the vertex color source.
 
 OBJ vertex color is written using the common extended OBJ form:
 
@@ -177,6 +186,12 @@ files even though color support is not part of the oldest Wavefront OBJ
 specification. Alpha is available in the parsed ``Vertex`` object and in DAE
 export, but OBJ export writes RGB only.
 
+DAE export writes a ``COLOR`` source with normalized RGBA values for every mesh
+group. This keeps the original vertex alpha available to importers that expose
+COLLADA vertex color data. Textured DAE materials still use the decoded texture
+as the diffuse map; the vertex color stream is exported as geometry data rather
+than baked into the PNGs.
+
 UV Mapping
 ----------
 
@@ -184,7 +199,7 @@ F3DEX2 stores per-vertex texture coordinates as signed 16-bit fixed-point
 values. The current exporter interprets them with 5 fractional bits, so one
 texel is ``32`` units.
 
-The OBJ UV conversion is:
+The OBJ and DAE UV conversion is:
 
 .. code-block:: text
 
@@ -197,16 +212,16 @@ Important details:
   has the N64 clamp bit set for that axis. Otherwise values outside ``0..1``
   are preserved so normal texture wrapping/repeating can still work in import
   tools.
-* OBJ's vertical texture axis is inverted relative to the convention used by
-  the source data, so the exporter writes ``1 - v``.
+* The exported vertical texture axis is inverted relative to the convention
+  used by the source data, so the exporter writes ``1 - v``.
 * Texture width and height come from the active ``G_SETTILESIZE`` command, not
   from the raw byte count.
 * ``G_TEXTURE`` scale values are parsed by the command class but are not applied
-  by OBJ export today.
+  by OBJ or DAE export today.
 
 If a vertex has ``texture_cord_u = texture_width * 32`` then it maps to
 ``u = 1.0``. If it has ``texture_cord_v = texture_height * 32`` then it maps to
-``v = 0.0`` after the OBJ vertical-axis flip.
+``v = 0.0`` after the exported vertical-axis flip.
 
 OBJ and MTL Structure
 ---------------------
@@ -289,6 +304,40 @@ example, the files may include:
 Only the highest-resolution color PNG is referenced by ``map_Kd``. If the
 texture has transparent pixels, the generated ``*_alpha.png`` mask is
 referenced by ``map_d``.
+
+DAE Structure
+-------------
+
+``GeometryData.save_to_dae()`` writes textured DAE output by default. It returns
+the paths written, with the DAE file first and the companion PNG texture files
+after it. Pass ``include_textures=False`` to keep the legacy geometry-only DAE
+path.
+
+The textured DAE exporter uses the same display-list traversal, mesh grouping,
+texture decoding, UV conversion, clamp handling, and packed mipmap detection as
+the OBJ exporter. The file structure is different:
+
+* each mesh group becomes one ``library_geometries`` entry;
+* each geometry contains aligned ``VERTEX``, ``COLOR``, and, when textured,
+  ``TEXCOORD`` sources;
+* each textured triangle set binds its material symbol to the geometry
+  ``TEXCOORD`` source through ``bind_vertex_input``;
+* each unique texture key becomes one DAE material and effect;
+* each material's diffuse channel references the highest-resolution decoded
+  PNG, matching OBJ's ``map_Kd`` behavior;
+* transparent textures add a separate alpha-mask image and reference it from the
+  DAE ``transparent`` channel;
+* clamped DK64 tile axes are written as ``wrap_s`` and ``wrap_t`` sampler hints
+  with ``CLAMP`` or ``WRAP`` values.
+
+Packed mipmap levels are still exported as PNG files beside the highest
+resolution image, but the DAE material references the highest-resolution PNG.
+That mirrors the OBJ path and avoids relying on importer-specific mipmap-chain
+extensions.
+
+For batch exports, ``Rom.export_geometries(..., geometry_format="dae")`` writes
+``.dae`` files instead of ``.obj`` files. ``Rom.export_all()`` accepts the same
+``geometry_format`` option and passes it through to geometry export.
 
 Texture Decoding
 ----------------
@@ -539,7 +588,7 @@ Test Mipmap Export Helper
 -------------------------
 
 ``test_mipmap_export()`` is a visual reverse-engineering helper. It is not used
-by normal OBJ export.
+by normal OBJ or DAE export.
 
 It writes:
 
@@ -569,27 +618,30 @@ folders:
      cutscenes/
      assets/
 
-Geometry exports use textured OBJ output by default. Texture table exports are
-different: ``Rom.export_textures()`` writes decompressed raw table entries from
-the known texture tables. Those raw texture exports are useful for analysis, but
-they are not the same PNG files written beside an OBJ. OBJ texture PNGs are
-decoded from the geometry texture table as display lists reference them.
+Geometry exports use textured OBJ output by default. Pass
+``geometry_format="dae"`` to ``Rom.export_geometries()`` or ``Rom.export_all()``
+to write textured DAE files instead. Texture table exports are different:
+``Rom.export_textures()`` writes decompressed raw table entries from the known
+texture tables. Those raw texture exports are useful for analysis, but they are
+not the same PNG files written beside OBJ or DAE geometry. Geometry texture PNGs
+are decoded from the geometry texture table as display lists reference them.
 
 Testing Coverage
 ----------------
 
-The texture and OBJ behavior is covered in ``tests/test_texture_export.py``.
+The texture, OBJ, and DAE behavior is covered in ``tests/test_texture_export.py``.
 Important coverage includes:
 
 * textured OBJ material and PNG output;
-* OBJ vertex colors;
+* textured DAE material, sampler, alpha-mask, and PNG output;
+* OBJ RGB vertex colors and DAE RGBA vertex colors;
 * UV generation from vertex texture coordinates;
 * material grouping by active texture state;
 * palette-based CI4 and CI8 decoding;
 * RGBA, IA, and I texture decoding;
 * packed mipmap exports for RGBA16 32x32, CI4 32x64, CI4 64x32, CI4 32x32,
   and CI8 32x32;
-* ensuring production OBJ export does not write raw ``*_base_*`` mipmap images;
+* ensuring production geometry export does not write raw ``*_base_*`` mipmap images;
 * ensuring ``test_mipmap_export()`` does write base/reference images.
 
 Run the focused texture tests with:
@@ -611,15 +663,16 @@ The current exporter is intentionally conservative:
 
 * It supports the packed mipmap layouts that have been identified so far, not
   every possible N64 layout.
-* It does not write or reference mipmap chains in the MTL. The MTL references
-  the highest-resolution decoded PNG because that is what normal OBJ importers
-  expect.
+* It does not write or reference mipmap chains in the MTL or DAE material. The
+  material references the highest-resolution decoded PNG because that is what
+  normal importers expect.
 * It parses ``G_TEXTURE`` scale fields but does not currently apply them to OBJ
-  UVs.
+  or DAE UVs.
 * It writes RGB vertex colors to OBJ but does not write vertex alpha.
 * Texture clamp fields are translated to clamped OBJ UVs and ``-clamp on`` MTL
-  texture map hints. Mirror, mask, and shift fields are parsed in
-  ``G_SETTILE`` but are not currently translated into OBJ/MTL behavior.
+  texture map hints, and to DAE ``wrap_s``/``wrap_t`` sampler hints. Mirror,
+  mask, and shift fields are parsed in ``G_SETTILE`` but are not currently
+  translated into exporter behavior.
 * OBJ/MTL importer support for ``-clamp on`` varies. The exporter emits it
   because it is part of the Wavefront material syntax, but clamped UVs are the
   compatibility fallback.
