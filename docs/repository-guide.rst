@@ -22,6 +22,8 @@ Top-Level Layout
 
 ``docs/``
     Sphinx documentation source and generated documentation build output.
+    ``docs/textured-geometry.rst`` is the primary narrative reference for OBJ,
+    UV, texture, and packed mipmap export behavior.
 
 Library Modules
 ---------------

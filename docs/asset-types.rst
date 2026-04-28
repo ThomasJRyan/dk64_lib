@@ -91,6 +91,10 @@ Supported texture decoding includes:
 Unknown or unsupported texture combinations produce placeholder RGBA data
 instead of failing the full export.
 
+For the detailed geometry texture pipeline, including OBJ materials, UV
+conversion, vertex colors, palette handling, and the currently decoded packed
+mipmap layouts, see :doc:`textured-geometry`.
+
 Cutscene Data
 -------------
 

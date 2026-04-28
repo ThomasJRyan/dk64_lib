@@ -35,6 +35,11 @@ DK64 Lib Documentation
        <strong>Export Reference</strong>
        <span>See which files are produced by each exporter and how they are named.</span>
      </a>
+     <a class="doc-card" href="textured-geometry.html">
+       <span class="card-label">Pipeline</span>
+       <strong>Textured Geometry</strong>
+       <span>Follow OBJ export, UV mapping, vertex colors, texture decoding, and DK64 mipmaps.</span>
+     </a>
      <a class="doc-card" href="api/index.html">
        <span class="card-label">API</span>
        <strong>Python Reference</strong>
@@ -66,4 +71,5 @@ details second. Start with :doc:`getting-started`, then use
    repository-guide
    asset-types
    exports
+   textured-geometry
    api/index

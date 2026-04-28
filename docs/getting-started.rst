@@ -79,8 +79,13 @@ Export a single geometry table entry:
    geometry = rom.geometry_tables[0]
    geometry.save_to_obj("map_000.obj", "dk64_export/geometries")
 
+By default, OBJ export writes vertex colors, UV coordinates for textured mesh
+groups, MTL materials, and decoded PNG textures. See
+:doc:`textured-geometry` for the full OBJ, texture, and packed mipmap pipeline.
+
 Next Steps
 ----------
 
 Use :doc:`asset-types` for a conceptual map of each supported data type. Use
-:doc:`exports` for file naming and folder layout details.
+:doc:`exports` for file naming and folder layout details. Use
+:doc:`textured-geometry` when working on geometry texture behavior.

@@ -48,6 +48,13 @@ Pointer entries are written as:
 
 The pointer file contains the target geometry table index.
 
+OBJ exports include RGB vertex colors on ``v`` lines. Textured groups include
+``vt`` texture coordinates, ``usemtl`` statements, and MTL ``map_Kd`` entries.
+When a known DK64 packed mipmap layout is decoded, the MTL points at the
+highest-resolution PNG while the additional mip levels are written beside it.
+The production exporter does not write raw ``*_base_*`` mipmap reference images.
+For the full pipeline and mipmap layout notes, see :doc:`textured-geometry`.
+
 Text
 ----
 
