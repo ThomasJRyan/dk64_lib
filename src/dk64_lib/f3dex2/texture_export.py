@@ -903,7 +903,7 @@ def _test_ci4_64x32_mipmap_export_for_texture(
         output_width=level2_width,
         output_height=level2_height,
         source_group_pixels=width,
-        swap_group_pixels=8,
+        swap_group_pixels=16,
     )
     return _write_test_mipmap_outputs(
         folderpath,
