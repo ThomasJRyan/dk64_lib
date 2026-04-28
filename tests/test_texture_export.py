@@ -113,6 +113,8 @@ def _textured_triangle_display_list(
     width: int,
     height: int,
     palette_index: int | None = None,
+    cm_s: int = 0,
+    cm_t: int = 0,
 ) -> DisplayList:
     image_type = (fmt << 5) | (size << 3)
     commands = [
@@ -120,7 +122,7 @@ def _textured_triangle_display_list(
         _words(0xFD000000 | (image_type << 16), texture_index),
         _settile(fmt=fmt, size=size, tile=7),
         _words(0xF3000000, 0x07000000),
-        _settile(fmt=fmt, size=size, tile=0),
+        _settile(fmt=fmt, size=size, tile=0, cm_s=cm_s, cm_t=cm_t),
         _settilesize(tile=0, width=width, height=height),
     ]
     if palette_index is not None:
@@ -257,13 +259,52 @@ class TextureExportTest(unittest.TestCase):
             size=2,
             width=2,
             height=2,
+            cm_t=2,
         )
 
         export = TexturedObjExporter(texture_data).export([display_list], "model.mtl")
 
         self.assertIn("illum 4", export.mtl_data)
-        self.assertIn("map_Kd textures/tex_0_pal_none_f0_s2_2x2.png", export.mtl_data)
-        self.assertIn("map_d textures/tex_0_pal_none_f0_s2_2x2.png", export.mtl_data)
+        self.assertIn(
+            "map_Kd -clamp on textures/tex_0_pal_none_f0_s2_2x2_clamp_t.png",
+            export.mtl_data,
+        )
+        self.assertIn(
+            "map_d textures/tex_0_pal_none_f0_s2_2x2_clamp_t_alpha.png",
+            export.mtl_data,
+        )
+        self.assertEqual(
+            [image.filename for image in export.images],
+            [
+                "textures/tex_0_pal_none_f0_s2_2x2_clamp_t.png",
+                "textures/tex_0_pal_none_f0_s2_2x2_clamp_t_alpha.png",
+            ],
+        )
+        alpha_size, alpha_pixels = _png_rgba(export.images[1].data)
+        self.assertEqual(alpha_size, (2, 2))
+        self.assertEqual(
+            alpha_pixels,
+            bytes(
+                (
+                    0,
+                    0,
+                    0,
+                    0,
+                    255,
+                    255,
+                    255,
+                    255,
+                    255,
+                    255,
+                    255,
+                    255,
+                    255,
+                    255,
+                    255,
+                    255,
+                )
+            ),
+        )
 
     def test_exporter_emits_clamp_hint_and_clamps_uvs_for_clamped_tile(self):
         texture_data = [

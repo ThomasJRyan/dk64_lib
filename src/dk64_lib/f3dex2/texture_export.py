@@ -361,9 +361,7 @@ class TexturedObjExporter:
                 )
             )
             if has_transparency:
-                lines.append(
-                    _mtl_texture_map_statement("map_d", texture, texture_folder)
-                )
+                lines.append(f"map_d {texture_folder}/{_alpha_mask_filename(texture)}")
             lines.append("")
         return "\n".join(lines)
 
@@ -379,6 +377,25 @@ class TexturedObjExporter:
                 data=rgba_to_png(level.width, level.height, level.rgba),
             )
             for level in texture_plan.levels
+        ) + self._alpha_mask_image(texture_plan, texture_folder)
+
+    def _alpha_mask_image(
+        self,
+        texture_plan: _TextureExportPlan,
+        texture_folder: str,
+    ) -> tuple[TextureImageFile, ...]:
+        base_level = texture_plan.levels[0]
+        if not _texture_level_has_transparency(base_level):
+            return tuple()
+        return (
+            TextureImageFile(
+                filename=f"{texture_folder}/{_alpha_mask_filename(texture_plan.texture)}",
+                data=rgba_to_png(
+                    base_level.width,
+                    base_level.height,
+                    _alpha_mask_rgba(base_level.rgba),
+                ),
+            ),
         )
 
     def _decoded_texture_levels(
@@ -493,8 +510,19 @@ def _texture_level_filename(
     return f"{texture.material_name}_mip{level.level}_{level.width}x{level.height}.png"
 
 
+def _alpha_mask_filename(texture: _TextureKey) -> str:
+    return f"{texture.material_name}_alpha.png"
+
+
 def _texture_level_has_transparency(level: _DecodedTextureLevel) -> bool:
     return any(alpha < 255 for alpha in level.rgba[3::4])
+
+
+def _alpha_mask_rgba(source_rgba: bytes) -> bytes:
+    mask = bytearray()
+    for alpha in source_rgba[3::4]:
+        mask.extend((alpha, alpha, alpha, alpha))
+    return bytes(mask)
 
 
 def _mtl_texture_map_statement(

@@ -239,8 +239,11 @@ The MTL file creates one material per unique texture key:
    map_Kd textures/tex_158_pal_159_f2_s1_32x32.png
 
 If the decoded highest-resolution texture contains any transparent pixels, the
-exporter also writes an alpha map using the same PNG. Blender's OBJ importer
-uses ``map_d`` to connect image alpha to the imported material's alpha input.
+exporter also writes a dedicated alpha-mask PNG and references it with
+``map_d``. The mask stores opacity in both RGB and alpha channels: black means
+transparent, white means opaque. This is more compatible than pointing
+``map_d`` at the color PNG, because some OBJ importers read opacity from image
+luminance rather than from the PNG alpha channel.
 
 .. code-block:: text
 
@@ -251,7 +254,7 @@ uses ``map_d`` to connect image alpha to the imported material's alpha input.
    d 1.000000
    illum 4
    map_Kd textures/tex_0_pal_none_f0_s2_2x2.png
-   map_d textures/tex_0_pal_none_f0_s2_2x2.png
+   map_d textures/tex_0_pal_none_f0_s2_2x2_alpha.png
 
 If either texture axis is clamped by ``G_SETTILE``, the material name is
 suffixed with ``_clamp_s``, ``_clamp_t``, or ``_clamp_st``. The MTL texture map
@@ -274,7 +277,9 @@ example, the files may include:
    textures/tex_158_pal_159_f2_s1_32x32_mip2_8x8.png
    textures/tex_158_pal_159_f2_s1_32x32_mip3_4x4.png
 
-Only the first file is referenced by the MTL.
+Only the highest-resolution color PNG is referenced by ``map_Kd``. If the
+texture has transparent pixels, the generated ``*_alpha.png`` mask is
+referenced by ``map_d``.
 
 Texture Decoding
 ----------------

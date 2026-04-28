@@ -50,9 +50,9 @@ The pointer file contains the target geometry table index.
 
 OBJ exports include RGB vertex colors on ``v`` lines. Textured groups include
 ``vt`` texture coordinates, ``usemtl`` statements, and MTL ``map_Kd`` entries.
-Textures with transparent pixels also get ``map_d`` alpha map entries. Textures
-using clamped DK64 tile state get clamped UVs and ``-clamp on`` MTL texture map
-hints.
+Textures with transparent pixels also get dedicated ``*_alpha.png`` opacity
+masks and ``map_d`` alpha map entries. Textures using clamped DK64 tile state
+get clamped UVs and ``-clamp on`` MTL texture map hints.
 When a known DK64 packed mipmap layout is decoded, the MTL points at the
 highest-resolution PNG while the additional mip levels are written beside it.
 The production exporter does not write raw ``*_base_*`` mipmap reference images.
