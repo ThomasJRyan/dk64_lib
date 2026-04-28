@@ -800,7 +800,10 @@ def _has_packed_mipmap_storage(
 
 
 _CI4_64X32_MIPMAP_TEST_SPEC = (208, 209, 2, 0, 64, 32)
-_BASE_ONLY_MIPMAP_TEST_SPECS = ((158, 159, 2, 1, 32, 32),)
+_BASE_ONLY_MIPMAP_TEST_SPECS = (
+    (158, 159, 2, 1, 32, 32),
+    (1272, 1273, 2, 0, 32, 32),
+)
 
 
 def test_mipmap_export(
