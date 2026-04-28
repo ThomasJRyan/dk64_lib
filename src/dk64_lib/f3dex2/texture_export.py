@@ -897,11 +897,13 @@ def _test_ci4_64x32_mipmap_export_for_texture(
         skipped_pixels=0,
         swap_second_row_group_pixels=16,
     )
-    level2_rgba = _slice_flat_rgba(
+    level2_rgba = _slice_segmented_rows_rgba(
         base_rgba,
-        level2_start_pixel,
-        level2_width,
-        level2_height,
+        start_pixel=level2_start_pixel,
+        output_width=level2_width,
+        output_height=level2_height,
+        source_group_pixels=width,
+        swap_group_pixels=8,
     )
     return _write_test_mipmap_outputs(
         folderpath,
