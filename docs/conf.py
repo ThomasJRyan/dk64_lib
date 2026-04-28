@@ -37,17 +37,19 @@ napoleon_numpy_docstring = True
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-html_theme = "alabaster"
+html_theme = "pydata_sphinx_theme"
 html_title = "dk64_lib"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 html_show_sourcelink = True
 html_theme_options = {
-    "description": "Donkey Kong 64 ROM data extraction tools",
-    "fixed_sidebar": True,
-    "page_width": "1120px",
-    "sidebar_width": "260px",
-    "show_powered_by": False,
+    "logo": {
+        "text": "dk64_lib",
+    },
+    "navbar_align": "left",
+    "navigation_with_keys": True,
+    "show_toc_level": 2,
+    "secondary_sidebar_items": ["page-toc"],
 }
 
 pygments_style = "friendly"
