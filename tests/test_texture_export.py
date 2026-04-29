@@ -124,7 +124,14 @@ def _textured_triangle_display_list(
     palette_index: int | None = None,
     cm_s: int = 0,
     cm_t: int = 0,
+    vertex_colors: tuple[tuple[int, int, int, int], ...] | None = None,
 ) -> DisplayList:
+    if vertex_colors is None:
+        vertex_colors = (
+            (255, 255, 255, 255),
+            (255, 255, 255, 255),
+            (255, 255, 255, 255),
+        )
     image_type = (fmt << 5) | (size << 3)
     commands = [
         _g_texture(level=3),
@@ -151,9 +158,9 @@ def _textured_triangle_display_list(
     return DisplayList(
         raw_data=b"".join(commands),
         raw_vertex_data=(
-            _vertex(0, 0, 0, 0, 0)
-            + _vertex(1, 0, 0, width * 32, 0)
-            + _vertex(0, 1, 0, 0, height * 32)
+            _vertex(0, 0, 0, 0, 0, color=vertex_colors[0])
+            + _vertex(1, 0, 0, width * 32, 0, color=vertex_colors[1])
+            + _vertex(0, 1, 0, 0, height * 32, color=vertex_colors[2])
         ),
         vertex_pointer=0,
         offset=0,
@@ -677,6 +684,50 @@ class TextureExportTest(unittest.TestCase):
         self.assertEqual(
             set(gltf["meshes"][0]["primitives"][0]["attributes"]),
             {"POSITION", "COLOR_0", "TEXCOORD_0"},
+        )
+
+    def test_glb_exporter_blends_materials_with_vertex_alpha(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+            vertex_colors=(
+                (255, 255, 255, 128),
+                (255, 255, 255, 255),
+                (255, 255, 255, 255),
+            ),
+        )
+
+        export = TexturedGltfExporter(texture_data).export_glb([display_list])
+        gltf, _bin_chunk = _glb_chunks(export.data)
+
+        material = gltf["materials"][1]
+        self.assertEqual(material["name"], "tex_0_pal_none_f0_s2_2x2_vertex_alpha")
+        self.assertEqual(material["alphaMode"], "BLEND")
+
+        primitive = gltf["meshes"][0]["primitives"][0]
+        self.assertEqual(primitive["material"], 1)
+        alpha_values = _gltf_accessor_floats(
+            gltf,
+            _bin_chunk,
+            primitive["attributes"]["COLOR_0"],
+        )[3::4]
+        self.assertAlmostEqual(alpha_values[0], 128 / 255)
+        self.assertEqual(
+            alpha_values[1:],
+            (1.0, 1.0),
         )
 
     def test_exporter_uses_texture_command_tile_without_exporting_mip_levels(self):

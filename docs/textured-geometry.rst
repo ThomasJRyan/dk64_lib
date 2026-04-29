@@ -345,14 +345,21 @@ the OBJ exporter. The file structure is:
 * each mesh primitive contains ``POSITION``, ``COLOR_0``, and, when textured,
   ``TEXCOORD_0`` attributes;
 * indices are written as unsigned integer accessors into the binary buffer;
-* each unique texture key becomes one glTF material, texture, image, and
-  sampler;
+* each unique texture key becomes one glTF texture, image, and sampler, plus
+  one or more materials when opaque and vertex-alpha groups need different
+  blend modes;
 * materials use the ``KHR_materials_unlit`` extension because DK64 map textures
   are closer to unlit game materials than to authored PBR materials;
 * the material base color texture references the highest-resolution decoded
   PNG;
 * transparent textures keep their alpha in the color PNG and set
   ``alphaMode`` to ``BLEND``;
+* mesh groups with vertex alpha below full opacity also set ``alphaMode`` to
+  ``BLEND`` so ``COLOR_0`` alpha can create DK64-style foliage and terrain
+  fades even when the texture image itself is opaque;
+* when the same opaque texture is used by both opaque and vertex-alpha mesh
+  groups, the exporter writes a separate ``*_vertex_alpha`` material variant
+  for the blended groups;
 * clamped DK64 tile axes are written as glTF sampler ``wrapS`` and ``wrapT``
   values, using ``CLAMP_TO_EDGE`` for clamped axes and ``REPEAT`` otherwise.
 

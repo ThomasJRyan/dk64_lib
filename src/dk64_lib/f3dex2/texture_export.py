@@ -154,6 +154,12 @@ class _MeshGroup:
     display_list_offset: int
 
 
+@dataclass(frozen=True, slots=True)
+class _GltfMaterialKey:
+    texture: _TextureKey | None
+    blended: bool
+
+
 TextureAnimationFrameRef = int | tuple[int, int | None]
 TextureAnimationFrames = Mapping[int, Sequence[TextureAnimationFrameRef]]
 
@@ -1515,22 +1521,35 @@ def _gltf_mesh(
         "scenes": [{"nodes": []}],
         "nodes": [],
         "meshes": [],
-        "materials": [_gltf_vertex_material()],
+        "materials": [_gltf_vertex_material(blended=False)],
     }
-    material_indices: dict[_TextureKey | None, int] = {None: 0}
-    _gltf_add_texture_materials(
+    material_indices: dict[_GltfMaterialKey, int] = {
+        _GltfMaterialKey(None, False): 0
+    }
+    texture_indices = _gltf_add_texture_resources(
         gltf,
         binary,
         texture_plans,
         texture_folder,
         embedded_images,
-        material_indices,
     )
+    texture_plans_by_texture = {
+        texture_plan.texture: texture_plan for texture_plan in texture_plans
+    }
 
     for group_index, group in enumerate(groups):
         if not group.vertices or not group.triangles:
             continue
-        material_index = material_indices.get(group.texture, 0)
+        material_key = _gltf_material_key(group, texture_plans_by_texture)
+        material_index = material_indices.get(material_key)
+        if material_index is None:
+            material_index = _gltf_add_material(
+                gltf,
+                material_key,
+                texture_plans_by_texture,
+                texture_indices,
+            )
+            material_indices[material_key] = material_index
         mesh_index = _gltf_add_mesh(gltf, binary, group, group_index, material_index)
         node_index = _gltf_append(
             gltf,
@@ -1551,9 +1570,55 @@ def _gltf_mesh(
     return gltf, binary_data
 
 
-def _gltf_vertex_material() -> dict[str, object]:
-    return {
-        "name": "vertex-material",
+def _gltf_material_key(
+    group: _MeshGroup,
+    texture_plans_by_texture: dict[_TextureKey, _TextureExportPlan],
+) -> _GltfMaterialKey:
+    texture_has_alpha = False
+    if group.texture is not None:
+        texture_plan = texture_plans_by_texture.get(group.texture)
+        texture_has_alpha = bool(
+            texture_plan and _texture_level_has_transparency(texture_plan.levels[0])
+        )
+    return _GltfMaterialKey(
+        group.texture,
+        texture_has_alpha or _mesh_group_has_vertex_transparency(group),
+    )
+
+
+def _mesh_group_has_vertex_transparency(group: _MeshGroup) -> bool:
+    vertex_indices = {
+        vertex_index
+        for triangle in group.triangles
+        for vertex_index in (triangle.v1, triangle.v2, triangle.v3)
+    }
+    return any(
+        0 <= vertex_index < len(group.vertices)
+        and group.vertices[vertex_index].alpha < 255
+        for vertex_index in vertex_indices
+    )
+
+
+def _gltf_add_material(
+    gltf: dict[str, object],
+    material_key: _GltfMaterialKey,
+    texture_plans_by_texture: dict[_TextureKey, _TextureExportPlan],
+    texture_indices: dict[_TextureKey, int],
+) -> int:
+    if material_key.texture is None:
+        material = _gltf_vertex_material(blended=material_key.blended)
+    else:
+        material = _gltf_texture_material(
+            texture_plans_by_texture[material_key.texture],
+            texture_indices[material_key.texture],
+            blended=material_key.blended,
+        )
+    return _gltf_append(gltf, "materials", material)
+
+
+def _gltf_vertex_material(blended: bool) -> dict[str, object]:
+    material: dict[str, object] = {
+        "name": "vertex-material-blend" if blended else "vertex-material",
         "doubleSided": True,
         "pbrMetallicRoughness": {
             "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
@@ -1562,19 +1627,22 @@ def _gltf_vertex_material() -> dict[str, object]:
         },
         "extensions": {"KHR_materials_unlit": {}},
     }
+    if blended:
+        material["alphaMode"] = "BLEND"
+    return material
 
 
-def _gltf_add_texture_materials(
+def _gltf_add_texture_resources(
     gltf: dict[str, object],
     binary: _GltfBinaryBuilder,
     texture_plans: tuple[_TextureExportPlan, ...],
     texture_folder: str,
     embedded_images: tuple[TextureImageFile, ...],
-    material_indices: dict[_TextureKey | None, int],
-) -> None:
+) -> dict[_TextureKey, int]:
     embedded_images_by_name = {
         pathlib.PurePosixPath(image.filename).name: image for image in embedded_images
     }
+    texture_indices = {}
     for texture_plan in texture_plans:
         texture = texture_plan.texture
         image_index = _gltf_add_image(
@@ -1594,11 +1662,8 @@ def _gltf_add_texture_materials(
                 "sampler": sampler_index,
             },
         )
-        material_indices[texture] = _gltf_append(
-            gltf,
-            "materials",
-            _gltf_texture_material(texture_plan, texture_index),
-        )
+        texture_indices[texture] = texture_index
+    return texture_indices
 
 
 def _gltf_add_image(
@@ -1630,9 +1695,13 @@ def _gltf_sampler(texture: _TextureKey) -> dict[str, int]:
 def _gltf_texture_material(
     texture_plan: _TextureExportPlan,
     texture_index: int,
+    blended: bool,
 ) -> dict[str, object]:
+    name = texture_plan.texture.material_name
+    if blended and not _texture_level_has_transparency(texture_plan.levels[0]):
+        name = f"{name}_vertex_alpha"
     material: dict[str, object] = {
-        "name": texture_plan.texture.material_name,
+        "name": name,
         "doubleSided": True,
         "pbrMetallicRoughness": {
             "baseColorTexture": {
@@ -1644,7 +1713,7 @@ def _gltf_texture_material(
         },
         "extensions": {"KHR_materials_unlit": {}},
     }
-    if _texture_level_has_transparency(texture_plan.levels[0]):
+    if blended:
         material["alphaMode"] = "BLEND"
     return material
 

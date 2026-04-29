@@ -124,7 +124,10 @@ Textures with transparent pixels also get dedicated ``*_alpha.png`` opacity
 masks for OBJ and DAE. OBJ references those masks with ``map_d``; DAE references
 them from the material ``transparent`` channel. GLB and glTF use the PNG color
 texture's alpha channel directly and set transparent materials to
-``alphaMode="BLEND"``. Textures using clamped DK64 tile state get clamped UVs.
+``alphaMode="BLEND"``. GLB and glTF also set ``alphaMode="BLEND"`` when a mesh
+group uses vertex alpha below full opacity, creating a separate
+``*_vertex_alpha`` material variant when only some groups using an opaque
+texture need blending. Textures using clamped DK64 tile state get clamped UVs.
 OBJ also emits ``-clamp on`` MTL texture map hints. DAE emits ``wrap_s`` and
 ``wrap_t`` sampler hints, while GLB and glTF emit glTF sampler ``wrapS`` and
 ``wrapT`` values.
