@@ -167,6 +167,30 @@ class Rom:
             trust_table25_proper=trust_table25_proper,
         )
 
+    def export_texture_analysis_review(
+        self,
+        folderpath: str | Path,
+        tables: tuple[int, ...] = GUESSED_TEXTURE_TABLES,
+        reference_root: str | Path | None = None,
+        max_entries: int | None = None,
+        trust_table25_proper: bool = False,
+        candidate_limit: int | None = 5,
+        clear: bool = False,
+    ):
+        """Write texture analysis reports and status-sorted PNG previews."""
+        from dk64_lib.texture_analysis import export_texture_analysis_review
+
+        return export_texture_analysis_review(
+            self,
+            folderpath,
+            tables=tables,
+            reference_root=reference_root,
+            max_entries=max_entries,
+            trust_table25_proper=trust_table25_proper,
+            candidate_limit=candidate_limit,
+            clear=clear,
+        )
+
     def export_textures(
         self,
         folderpath: str | Path = "exports/textures",

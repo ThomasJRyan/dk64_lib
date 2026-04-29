@@ -16,6 +16,7 @@ import csv
 import json
 import math
 import re
+import shutil
 import sys
 
 from collections import Counter
@@ -29,6 +30,14 @@ TEXTURE_ANALYSIS_TABLES = (7, 14, 25)
 
 _REFERENCE_FILENAME = re.compile(r"^(?P<index>\d{6})_offset_[0-9a-fA-F]+_")
 _REFERENCE_TABLE = re.compile(r"^table_(?P<table>\d+)$")
+_REVIEW_STATUS_FOLDERS = (
+    "likely_ok",
+    "mipmap_candidate",
+    "alternate_format_candidate",
+    "format_ambiguous",
+    "palette_candidate",
+    "unknown",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,6 +285,70 @@ def analyze_rom_textures(
     if reference_labels:
         return _apply_reference_predictions(results)
     return results
+
+
+def export_texture_analysis_review(
+    rom: object,
+    folderpath: str | Path,
+    tables: Sequence[int] = TEXTURE_ANALYSIS_TABLES,
+    reference_root: str | Path | None = None,
+    max_entries: int | None = None,
+    trust_table25_proper: bool = False,
+    candidate_limit: int | None = 5,
+    clear: bool = False,
+) -> tuple[Path, ...]:
+    """Write a manually-reviewable texture analysis workspace.
+
+    The workspace contains PNG previews sorted by predicted status, plus JSON
+    and CSV reports. Review files keep the same leading ``index_offset`` naming
+    convention as the existing hand-sorted folders so confirmed files can be
+    moved directly into ``proper_textures`` or ``broken_textures`` reference
+    folders.
+    """
+
+    root = Path(folderpath)
+    if clear:
+        _clear_review_folder(root)
+    root.mkdir(parents=True, exist_ok=True)
+
+    entries_by_key = {
+        (entry.table_id, entry.index): entry
+        for table_id in tables
+        for entry in texture_table_entries(rom, table_id, max_entries=max_entries)
+    }
+    results = analyze_rom_textures(
+        rom,
+        tables=tables,
+        reference_root=reference_root,
+        max_entries=max_entries,
+        trust_table25_proper=trust_table25_proper,
+    )
+
+    written_paths = [
+        _write_review_text(
+            root / "texture_analysis.json",
+            results_to_json(results, candidate_limit),
+        ),
+        _write_review_text(root / "texture_analysis.csv", results_to_csv(results)),
+        _write_review_text(root / "README.txt", _review_readme()),
+    ]
+    for result in results:
+        entry = entries_by_key.get((result.table_id, result.index))
+        if entry is None:
+            continue
+        preview = _texture_preview_png(result, entry, entries_by_key)
+        if preview is None:
+            continue
+        path = (
+            root
+            / result.status
+            / f"table_{result.table_id:02d}"
+            / _review_texture_filename(result)
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(preview)
+        written_paths.append(path)
+    return tuple(written_paths)
 
 
 def texture_table_entries(
@@ -576,6 +649,131 @@ def results_to_csv(
             }
         )
     return output.getvalue()
+
+
+def _clear_review_folder(root: Path) -> None:
+    for folder_name in _REVIEW_STATUS_FOLDERS:
+        folder = root / folder_name
+        if folder.exists():
+            shutil.rmtree(folder)
+    for filename in ("texture_analysis.json", "texture_analysis.csv", "README.txt"):
+        path = root / filename
+        if path.exists():
+            path.unlink()
+
+
+def _write_review_text(path: Path, data: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(data)
+    return path
+
+
+def _review_readme() -> str:
+    return (
+        "DK64 texture analysis review workspace\n"
+        "\n"
+        "Folders are generated from the analyzer's current predicted status.\n"
+        "Move confirmed files into these reference folders and rerun:\n"
+        "\n"
+        "  proper_textures/table_XX/\n"
+        "  broken_textures/table_XX/mipmap/\n"
+        "  broken_textures/table_XX/wrong_format/\n"
+        "\n"
+        "Reference folders are used as runtime calibration data. They are not a\n"
+        "static manifest, and the analyzer will reclassify similar unlabeled\n"
+        "entries on the next run.\n"
+    )
+
+
+def _texture_preview_png(
+    result: TextureAnalysisResult,
+    entry: TextureTableEntry,
+    entries_by_key: dict[tuple[int, int], TextureTableEntry],
+) -> bytes | None:
+    candidate = result.best_candidate
+    if candidate is None or candidate.width is None or candidate.height is None:
+        return None
+    if candidate.fmt is None or candidate.size is None:
+        return None
+
+    from dk64_lib.f3dex2.texture_export import decode_texture, rgba_to_png
+
+    raw_palette = _candidate_palette_data(result, candidate, entries_by_key)
+    if candidate.kind == "mipmap":
+        level = _mipmap_preview_level(candidate, entry.raw_data, raw_palette)
+        if level is not None:
+            return rgba_to_png(level[0], level[1], level[2])
+
+    rgba = decode_texture(
+        entry.raw_data,
+        fmt=candidate.fmt,
+        size=candidate.size,
+        width=candidate.width,
+        height=candidate.height,
+        palette_data=raw_palette,
+    )
+    return rgba_to_png(candidate.width, candidate.height, rgba)
+
+
+def _candidate_palette_data(
+    result: TextureAnalysisResult,
+    candidate: TextureCandidate,
+    entries_by_key: dict[tuple[int, int], TextureTableEntry],
+) -> bytes | None:
+    if candidate.palette_index is None:
+        return None
+    palette_entry = entries_by_key.get((result.table_id, candidate.palette_index))
+    return palette_entry.raw_data if palette_entry else None
+
+
+def _mipmap_preview_level(
+    candidate: TextureCandidate,
+    raw_texture: bytes,
+    raw_palette: bytes | None,
+) -> tuple[int, int, bytes] | None:
+    if candidate.fmt is None or candidate.size is None:
+        return None
+    if candidate.width is None or candidate.height is None:
+        return None
+
+    from dk64_lib.f3dex2.texture_export import _TextureKey
+    from dk64_lib.f3dex2.texture_export import _decode_packed_mipmap_levels
+
+    texture_key = _TextureKey(
+        image_index=0,
+        palette_index=candidate.palette_index,
+        fmt=candidate.fmt,
+        size=candidate.size,
+        width=candidate.width,
+        height=candidate.height,
+    )
+    levels = _decode_packed_mipmap_levels(texture_key, raw_texture, raw_palette)
+    if not levels:
+        return None
+    highest = levels[0]
+    return highest.width, highest.height, highest.rgba
+
+
+def _review_texture_filename(result: TextureAnalysisResult) -> str:
+    candidate = result.best_candidate
+    if candidate is None:
+        return (
+            f"{result.index:06d}_offset_{result.offset:08x}_"
+            f"{result.status}_unknown.png"
+        )
+    fmt = "none" if candidate.fmt is None else str(candidate.fmt)
+    size = "none" if candidate.size is None else str(candidate.size)
+    width = "unknown" if candidate.width is None else str(candidate.width)
+    height = "unknown" if candidate.height is None else str(candidate.height)
+    palette = (
+        "none" if candidate.palette_index is None else str(candidate.palette_index)
+    )
+    layout = candidate.storage_layout.replace("/", "_")
+    return (
+        f"{result.index:06d}_offset_{result.offset:08x}_"
+        f"{result.status}_{candidate.kind}_{layout}_"
+        f"pal_{palette}_f{fmt}_s{size}_{width}x{height}.png"
+    )
 
 
 def _base_texture_candidates(
@@ -1169,13 +1367,43 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--output",
         help="Optional report path. Defaults to stdout.",
     )
+    parser.add_argument(
+        "--review-root",
+        help="Optional folder for PNG previews sorted by predicted status.",
+    )
+    parser.add_argument(
+        "--clear-review",
+        action="store_true",
+        help="Clear generated review status folders before writing previews.",
+    )
     args = parser.parse_args(argv)
 
     from dk64_lib.rom import Rom
 
+    rom = Rom(args.rom)
+    tables = _parse_tables(args.tables)
+    candidate_limit = None if args.candidate_limit == 0 else args.candidate_limit
+
+    if args.review_root:
+        written_paths = export_texture_analysis_review(
+            rom,
+            args.review_root,
+            tables=tables,
+            reference_root=args.reference_root,
+            max_entries=args.max_entries,
+            trust_table25_proper=args.trust_table25_proper,
+            candidate_limit=candidate_limit,
+            clear=args.clear_review,
+        )
+        if not args.output:
+            sys.stdout.write(
+                f"Wrote {len(written_paths)} review files to {args.review_root}\n"
+            )
+            return 0
+
     results = analyze_rom_textures(
-        Rom(args.rom),
-        tables=_parse_tables(args.tables),
+        rom,
+        tables=tables,
         reference_root=args.reference_root,
         max_entries=args.max_entries,
         trust_table25_proper=args.trust_table25_proper,
@@ -1183,7 +1411,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.format == "csv":
         report = results_to_csv(results)
     else:
-        candidate_limit = None if args.candidate_limit == 0 else args.candidate_limit
         report = results_to_json(results, candidate_limit=candidate_limit)
 
     if args.output:

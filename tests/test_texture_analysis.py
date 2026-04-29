@@ -7,6 +7,7 @@ from dk64_lib.texture_analysis import (
     TextureTableEntry,
     analyze_rom_textures,
     analyze_texture_entry,
+    export_texture_analysis_review,
     load_texture_reference_labels,
     results_to_csv,
     results_to_json,
@@ -14,6 +15,35 @@ from dk64_lib.texture_analysis import (
 
 
 class TextureAnalysisTest(unittest.TestCase):
+    def test_review_export_writes_status_sorted_pngs_and_reports(self):
+        class FakeRom:
+            pass
+
+        def generate_rom_table_data(tables):
+            self.assertEqual(tables, [7])
+            yield {"offset": 0x1234, "raw_data": b"\xff\xff" * 1024}
+
+        fake_rom = FakeRom()
+        fake_rom.generate_rom_table_data = generate_rom_table_data
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+
+            written_paths = export_texture_analysis_review(
+                fake_rom,
+                root,
+                tables=(7,),
+                clear=True,
+            )
+            png_paths = list((root / "likely_ok" / "table_07").glob("*.png"))
+
+            self.assertIn(root / "texture_analysis.json", written_paths)
+            self.assertIn(root / "texture_analysis.csv", written_paths)
+            self.assertIn(root / "README.txt", written_paths)
+            self.assertEqual(len(png_paths), 1)
+            self.assertTrue(png_paths[0].read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertTrue(png_paths[0].name.startswith("000000_offset_00001234_"))
+
     def test_reference_root_calibrates_similar_unlabeled_entries(self):
         class FakeRom:
             pass

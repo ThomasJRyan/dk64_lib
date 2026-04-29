@@ -212,6 +212,35 @@ The same analyzer is available as a command-line tool:
 Use ``python -m dk64_lib.texture_analysis`` if the console script has not been
 installed in the active environment.
 
+For manual review, ask the analyzer to build a status-sorted workspace:
+
+.. code-block:: console
+
+   dk64-texture-analysis dk64.z64 \
+     --reference-root output \
+     --review-root output/texture_review \
+     --clear-review
+
+This writes ``texture_analysis.json``, ``texture_analysis.csv``, and PNG
+previews under folders such as:
+
+.. code-block:: text
+
+   output/texture_review/likely_ok/table_07/
+   output/texture_review/mipmap_candidate/table_25/
+   output/texture_review/format_ambiguous/table_14/
+
+Move confirmed previews into the reference folders and rerun the same command:
+
+.. code-block:: text
+
+   output/proper_textures/table_07/
+   output/broken_textures/table_07/mipmap/
+   output/broken_textures/table_07/wrong_format/
+
+The next run uses those moved files as calibration examples and re-sorts
+similar unlabeled entries.
+
 The analyzer reads raw table data from tables 7, 14, and 25 by default. It can
 run without hand-sorted folders, using only byte-size, palette, mipmap-layout,
 and raw-data heuristics. If ``reference_root`` is provided, folders such as
