@@ -10,5 +10,4 @@ These pages are generated from the library source with Sphinx autodoc.
    data-types
    geometry
    f3dex2
-   texture-analysis
    utilities

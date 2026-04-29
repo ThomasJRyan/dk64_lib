@@ -756,9 +756,7 @@ For table 7, table 14, and unreferenced table 25 entries, ``Rom.export_textures(
 also writes best-effort RGBA5551 PNGs when the decompressed byte length matches
 a known size guess. Guessed outputs include ``guess`` in their filenames. Use
 ``Rom.export_assets()`` or ``Rom.export_raw_tables()`` when you need raw bytes
-from texture tables. Use ``Rom.analyze_textures()`` or
-``dk64-texture-analysis`` to rank likely formats and packed mipmap layouts for
-those metadata-free entries before adding new production decoders.
+from texture tables.
 
 Testing Coverage
 ----------------
