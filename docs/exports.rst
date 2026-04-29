@@ -191,6 +191,61 @@ Guessed files include ``guess`` in their filenames:
 Use ``Rom.export_assets()`` or ``Rom.export_raw_tables()`` when you need exact
 decompressed ``.bin`` records for analysis.
 
+Texture Analysis
+----------------
+
+Unknown texture-table entries can be ranked with the dynamic analyzer instead
+of creating a static per-index manifest:
+
+.. code-block:: python
+
+   results = rom.analyze_textures(reference_root="output")
+
+The same analyzer is available as a command-line tool:
+
+.. code-block:: console
+
+   dk64-texture-analysis dk64.z64 \
+     --reference-root output \
+     --output output/texture_analysis.json
+
+Use ``python -m dk64_lib.texture_analysis`` if the console script has not been
+installed in the active environment.
+
+The analyzer reads raw table data from tables 7, 14, and 25 by default. It can
+run without hand-sorted folders, using only byte-size, palette, mipmap-layout,
+and raw-data heuristics. If ``reference_root`` is provided, folders such as
+``output/proper_textures`` and ``output/broken_textures`` are also used for a
+dynamic nearest-neighbor calibration pass. That pass learns from raw-byte
+features in the reference examples at runtime; it does not create or require a
+static per-index manifest. The ``proper_textures/table_25`` folder is ignored by
+default because it has not been fully manually classified; pass
+``--trust-table25-proper`` when that folder should be included in calibration
+and evaluation.
+
+Each result has a ``status``:
+
+* ``likely_ok`` means the strongest candidate is the current RGBA5551-style
+  direct texture interpretation.
+* ``mipmap_candidate`` means the byte length matches a known four-level DK64
+  packed mipmap layout, such as CI4 ``32x64``, CI4 ``64x32``, CI4/CI8
+  ``32x32``, or RGBA16 ``32x32``.
+* ``alternate_format_candidate`` means a non-RGBA5551 candidate ranked higher,
+  usually because the entry has palette evidence or another N64 format is more
+  plausible.
+* ``format_ambiguous`` means multiple plausible candidates are close enough
+  that the texture still needs visual inspection.
+* ``palette_candidate`` means the entry itself looks like a palette record
+  rather than a standalone texture.
+
+The ranking is heuristic. It considers exact byte-size matches, power-of-two and
+known DK64 dimensions, adjacent palette-sized entries, known packed-mipmap
+storage formulas, and simple RGBA alpha-bit statistics. When reference folders
+are present, each result also includes a ``reference_prediction`` with the
+nearest labeled examples and confidence. The JSON report keeps the top
+candidates and their notes so the next decoder pass can be targeted at groups of
+similar entries instead of hand-maintaining an index manifest.
+
 Cutscenes
 ---------
 

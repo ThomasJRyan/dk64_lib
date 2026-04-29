@@ -12,6 +12,9 @@ dependencies = [
     "pycollada",
 ]
 
+[project.scripts]
+dk64-texture-analysis = "dk64_lib.texture_analysis:main"
+
 # [tool.setuptools]
 # packages = ["dk64_lib", "dk64_lib.f3dex2"]
 

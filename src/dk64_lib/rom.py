@@ -149,6 +149,24 @@ class Rom:
     def geometry_tables(self):
         return [geometry_data for geometry_data in self.get_geometry_data()]
 
+    def analyze_textures(
+        self,
+        tables: tuple[int, ...] = GUESSED_TEXTURE_TABLES,
+        reference_root: str | Path | None = None,
+        max_entries: int | None = None,
+        trust_table25_proper: bool = False,
+    ):
+        """Analyze texture tables and rank likely format/mipmap candidates."""
+        from dk64_lib.texture_analysis import analyze_rom_textures
+
+        return analyze_rom_textures(
+            self,
+            tables=tables,
+            reference_root=reference_root,
+            max_entries=max_entries,
+            trust_table25_proper=trust_table25_proper,
+        )
+
     def export_textures(
         self,
         folderpath: str | Path = "exports/textures",
