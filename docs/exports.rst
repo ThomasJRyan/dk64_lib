@@ -239,7 +239,11 @@ Move confirmed previews into the reference folders and rerun the same command:
    output/broken_textures/table_07/wrong_format/
 
 The next run uses those moved files as calibration examples and re-sorts
-similar unlabeled entries.
+similar unlabeled entries. Already-confirmed reference entries are skipped from
+the review preview folders by default, so a texture you move into
+``proper_textures`` or ``broken_textures`` should disappear from
+``texture_review`` on the next run. Pass ``--include-referenced`` only when you
+want to audit confirmed entries again.
 
 The analyzer reads raw table data from tables 7, 14, and 25 by default. It can
 run without hand-sorted folders, using only byte-size, palette, mipmap-layout,

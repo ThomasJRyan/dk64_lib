@@ -176,6 +176,7 @@ class Rom:
         trust_table25_proper: bool = False,
         candidate_limit: int | None = 5,
         clear: bool = False,
+        include_referenced: bool = False,
     ):
         """Write texture analysis reports and status-sorted PNG previews."""
         from dk64_lib.texture_analysis import export_texture_analysis_review
@@ -189,6 +190,7 @@ class Rom:
             trust_table25_proper=trust_table25_proper,
             candidate_limit=candidate_limit,
             clear=clear,
+            include_referenced=include_referenced,
         )
 
     def export_textures(

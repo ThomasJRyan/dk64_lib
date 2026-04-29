@@ -296,6 +296,7 @@ def export_texture_analysis_review(
     trust_table25_proper: bool = False,
     candidate_limit: int | None = 5,
     clear: bool = False,
+    include_referenced: bool = False,
 ) -> tuple[Path, ...]:
     """Write a manually-reviewable texture analysis workspace.
 
@@ -303,7 +304,8 @@ def export_texture_analysis_review(
     and CSV reports. Review files keep the same leading ``index_offset`` naming
     convention as the existing hand-sorted folders so confirmed files can be
     moved directly into ``proper_textures`` or ``broken_textures`` reference
-    folders.
+    folders. Entries already present in a trusted reference folder are skipped
+    by default so the review folders only contain unresolved work.
     """
 
     root = Path(folderpath)
@@ -333,6 +335,8 @@ def export_texture_analysis_review(
         _write_review_text(root / "README.txt", _review_readme()),
     ]
     for result in results:
+        if result.reference and not include_referenced:
+            continue
         entry = entries_by_key.get((result.table_id, result.index))
         if entry is None:
             continue
@@ -1376,6 +1380,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Clear generated review status folders before writing previews.",
     )
+    parser.add_argument(
+        "--include-referenced",
+        action="store_true",
+        help="Also write previews for entries already present in reference folders.",
+    )
     args = parser.parse_args(argv)
 
     from dk64_lib.rom import Rom
@@ -1394,6 +1403,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             trust_table25_proper=args.trust_table25_proper,
             candidate_limit=candidate_limit,
             clear=args.clear_review,
+            include_referenced=args.include_referenced,
         )
         if not args.output:
             sys.stdout.write(

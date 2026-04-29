@@ -44,6 +44,45 @@ class TextureAnalysisTest(unittest.TestCase):
             self.assertTrue(png_paths[0].read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
             self.assertTrue(png_paths[0].name.startswith("000000_offset_00001234_"))
 
+    def test_review_export_skips_referenced_entries_by_default(self):
+        class FakeRom:
+            pass
+
+        def generate_rom_table_data(tables):
+            self.assertEqual(tables, [7])
+            yield {"offset": 0x1234, "raw_data": b"\xff\xff" * 1024}
+
+        fake_rom = FakeRom()
+        fake_rom.generate_rom_table_data = generate_rom_table_data
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            reference = (
+                root
+                / "proper_textures"
+                / "table_07"
+                / "000000_offset_00001234_guess_f0_s2_32x32.png"
+            )
+            reference.parent.mkdir(parents=True, exist_ok=True)
+            reference.write_bytes(b"png")
+
+            export_texture_analysis_review(
+                fake_rom,
+                root / "review",
+                tables=(7,),
+                reference_root=root,
+            )
+            self.assertEqual(list((root / "review").rglob("*.png")), [])
+
+            export_texture_analysis_review(
+                fake_rom,
+                root / "review_with_refs",
+                tables=(7,),
+                reference_root=root,
+                include_referenced=True,
+            )
+            self.assertEqual(len(list((root / "review_with_refs").rglob("*.png"))), 1)
+
     def test_reference_root_calibrates_similar_unlabeled_entries(self):
         class FakeRom:
             pass
