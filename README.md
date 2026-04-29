@@ -29,17 +29,81 @@ for text_line in rom.text_tables[0].text_lines:
 
 ### Geometry data
 
-Export every map to an obj
+Export every supported asset type to organized folders:
 ```python
 from dk64_lib.rom import Rom
 rom = Rom("Donkey Kong 64 (USA).z64")
 
-for map_num, geometry_map in enumerate(rom.geometry_tables):
-    geometry_map.save_to_obj(f'{map_num}.obj')
+rom.export_all("dk64_export")
+```
+
+Export every map to GLB for Blender-friendly textured geometry:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.export_geometries("dk64_export/geometries")
+```
+
+Export every map to OBJ with MTL files and PNG texture assets:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.export_geometries("dk64_export/geometries", geometry_format="obj")
+```
+
+Export every map to separate glTF, binary, and PNG files:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.export_geometries("dk64_export/geometries", geometry_format="gltf")
+```
+
+Export every map to DAE with PNG texture assets:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.export_geometries("dk64_export/geometries", geometry_format="dae")
+```
+
+Export a single map as textured OBJ:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.geometry_tables[0].save_to_obj("0.obj")
+```
+
+Export a single map as textured GLB or glTF:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.geometry_tables[0].save_to_glb("0.glb")
+rom.geometry_tables[0].save_to_gltf("0.gltf")
+```
+
+Export a single map as textured DAE:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.geometry_tables[0].save_to_dae("0.dae")
+```
+
+Export a legacy geometry-only OBJ:
+```python
+from dk64_lib.rom import Rom
+rom = Rom("Donkey Kong 64 (USA).z64")
+
+rom.geometry_tables[0].save_to_obj("0.obj", include_textures=False)
 ```
 
 ## To-do
-- Extract texture data and convert to appropriately formatted images
+- Expand textured geometry export format coverage and texture-state accuracy
 - Extract models and convert to objs
 - Extract audio and convert to some sort of audio file
 - Extract everything else

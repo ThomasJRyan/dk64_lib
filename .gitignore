@@ -5,3 +5,7 @@ __pycache__/
 *.n64
 *.z64
 *.v64
+.codex
+output/
+textures/
+docs_out/

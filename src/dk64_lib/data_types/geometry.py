@@ -1,12 +1,10 @@
 import re
 import pathlib
 
-from dataclasses import dataclass
-from tempfile import TemporaryFile
-
 from numpy import array as numpy_array
 from collada import Collada, source, material, geometry, scene
 
+from dk64_lib.binary_reader import BinaryReader
 from dk64_lib.data_types.base import BaseData
 from dk64_lib.f3dex2.display_list import (
     DisplayList,
@@ -14,7 +12,20 @@ from dk64_lib.f3dex2.display_list import (
     DisplayListExpansion,
     create_display_lists,
 )
-from dk64_lib.file_io import get_bytes, get_long
+from dk64_lib.f3dex2.texture_export import (
+    TextureAnimationFrames,
+    TexturedDaeExport,
+    TexturedDaeExporter,
+    TexturedGlbExport,
+    TexturedGltfExport,
+    TexturedGltfExporter,
+    TexturedObjExport,
+    TexturedObjExporter,
+    save_textured_dae_export,
+    save_textured_glb_export,
+    save_textured_gltf_export,
+    save_textured_obj_export,
+)
 
 POINTER_PATTERN = re.compile(b'\x00[\x00-\xFF]\x08\x00\x00\x00\x00\x00')
 
@@ -26,28 +37,34 @@ class GeometryData(BaseData):
             self.is_pointer = True
         self.points_to = None
 
-        # Use a temporary file to allow us to seek throughout it
-        with TemporaryFile() as data_file:
-            data_file.write(self.raw_data)
-            data_file.seek(0)
+        self.dl_start = 0
+        self.vert_start = 0
+        self.vert_length = 0
+        self.vert_chunk_start = 0
+        self.vert_chunk_length = 0
+        self.dl_expansion_start = 0
+        if self.is_pointer:
+            return
 
-            # Get the display list and vertex starts
-            self.dl_start = get_long(data_file, 0x34)
-            self.vert_start = get_long(data_file, 0x38)
+        reader = BinaryReader(self.raw_data)
 
-            # ! I don't know what this is pointing to, but it signifies the end of the
-            # ! vertex data which is importent
-            _unknown_start = get_long(data_file, 0x40)
-            self.vert_length = _unknown_start - self.vert_start
+        # Get the display list and vertex starts
+        self.dl_start = reader.read_u32(0x34)
+        self.vert_start = reader.read_u32(0x38)
 
-            self.vert_chunk_start = get_long(data_file, 0x68)
+        # ! I don't know what this is pointing to, but it signifies the end of the
+        # ! vertex data which is importent
+        _unknown_start = reader.read_u32(0x40)
+        self.vert_length = _unknown_start - self.vert_start
 
-            # ! I don't know what this is pointing to, but it signifies the end of the
-            # ! vertex chunk data which is importent
-            _unknown_start = get_long(data_file, 0x6C)
-            self.vert_chunk_length = _unknown_start - self.vert_chunk_start
+        self.vert_chunk_start = reader.read_u32(0x68)
 
-            self.dl_expansion_start = get_long(data_file, 0x70)
+        # ! I don't know what this is pointing to, but it signifies the end of the
+        # ! vertex chunk data which is importent
+        _unknown_start = reader.read_u32(0x6C)
+        self.vert_chunk_length = _unknown_start - self.vert_chunk_start
+
+        self.dl_expansion_start = reader.read_u32(0x70)
 
     @property
     def pointer(self):
@@ -65,13 +82,14 @@ class GeometryData(BaseData):
         if self.is_pointer:
             return list()
         ret_list = list()
-        with TemporaryFile() as data_file:
-            data_file.write(self.raw_data)
-            data_file.seek(self.dl_expansion_start)
-
-            expansion_count = get_long(data_file)
-            for _ in range(expansion_count):
-                ret_list.append(DisplayListExpansion(get_bytes(data_file, 0x10)))
+        reader = BinaryReader(self.raw_data)
+        expansion_count = reader.read_u32(self.dl_expansion_start)
+        expansion_start = self.dl_expansion_start + 4
+        for expansion_num in range(expansion_count):
+            offset = expansion_start + expansion_num * 0x10
+            ret_list.append(
+                DisplayListExpansion.from_bytes(reader.read_at(offset, 0x10))
+            )
 
         return ret_list
 
@@ -88,7 +106,9 @@ class GeometryData(BaseData):
         for chunk_num in range(int(self.vert_chunk_length / 52)):
             chunk_start = self.vert_chunk_start + 52 * chunk_num
             chunk_end = self.vert_chunk_start + 52 * (chunk_num + 1)
-            ret_list.append(DisplayListChunkData(self.raw_data[chunk_start:chunk_end]))
+            ret_list.append(
+                DisplayListChunkData.from_bytes(self.raw_data[chunk_start:chunk_end])
+            )
         return ret_list
 
     @property
@@ -140,7 +160,7 @@ class GeometryData(BaseData):
 
                 # Write vertecies to file
                 for vertex in verticies:
-                    obj_line = f"v {vertex.x} {vertex.y} {vertex.z}\n"
+                    obj_line = f"{vertex.to_obj_line()}\n"
                     obj_data += obj_line
                 obj_data += "\n"
 
@@ -157,23 +177,125 @@ class GeometryData(BaseData):
                 tri_offset += len(verticies)
         return obj_data
 
-    def save_to_obj(self, filename: str, folderpath: str = ".") -> None:
+    def create_textured_obj(
+        self,
+        mtl_filename: str = "geometry.mtl",
+        texture_folder: str = "textures",
+    ) -> TexturedObjExport:
+        """Creates OBJ, MTL, and texture image data for this geometry."""
+        texture_data = self.rom.get_geometry_texture_data() if self.rom else tuple()
+        exporter = TexturedObjExporter(texture_data)
+        return exporter.export(
+            self.display_lists,
+            mtl_filename=mtl_filename,
+            texture_folder=texture_folder,
+        )
+
+    def create_textured_dae(
+        self,
+        texture_folder: str = "textures",
+        animated_texture_frames: TextureAnimationFrames | None = None,
+        animation_frame_duration: int = 4,
+    ) -> TexturedDaeExport:
+        """Creates DAE and texture image data for this geometry."""
+        texture_data = self.rom.get_geometry_texture_data() if self.rom else tuple()
+        exporter = TexturedDaeExporter(texture_data)
+        return exporter.export(
+            self.display_lists,
+            texture_folder=texture_folder,
+            animated_texture_frames=animated_texture_frames,
+            animation_frame_duration=animation_frame_duration,
+        )
+
+    def create_textured_gltf(
+        self,
+        binary_filename: str = "geometry.bin",
+        texture_folder: str = "textures",
+        include_textures: bool = True,
+    ) -> TexturedGltfExport:
+        """Creates glTF, binary, and texture image data for this geometry."""
+        texture_data = self.rom.get_geometry_texture_data() if self.rom else tuple()
+        exporter = TexturedGltfExporter(texture_data)
+        return exporter.export(
+            self.display_lists,
+            binary_filename=binary_filename,
+            texture_folder=texture_folder,
+            include_textures=include_textures,
+        )
+
+    def create_textured_glb(
+        self,
+        include_textures: bool = True,
+    ) -> TexturedGlbExport:
+        """Creates binary glTF data for this geometry."""
+        texture_data = self.rom.get_geometry_texture_data() if self.rom else tuple()
+        exporter = TexturedGltfExporter(texture_data)
+        return exporter.export_glb(
+            self.display_lists,
+            include_textures=include_textures,
+        )
+
+    def save_to_obj(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = True,
+        texture_folder: str = "textures",
+    ) -> list[pathlib.Path]:
         """Save geometry data to obj format
 
         Args:
             filename (str): Name of obj file
             folderpath (str, optional): Folder path to save obj to. Defaults to ".".
+            include_textures (bool, optional): Whether to export OBJ material and
+                texture files alongside the OBJ. Defaults to True.
+            texture_folder (str, optional): Folder for exported texture images
+                when include_textures is True. Defaults to "textures".
         """
-        filepath = pathlib.Path(folderpath, filename)
-        with open(filepath, "w") as obj_file:
-            obj_file.write(self.create_obj())
+        if include_textures:
+            return self.save_to_textured_obj(filename, folderpath, texture_folder)
 
-    def create_dae(self) -> Collada:
+        filepath = pathlib.Path(folderpath, filename)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_text(self.create_obj())
+        return [filepath]
+
+    def save_to_textured_obj(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        texture_folder: str = "textures",
+    ) -> list[pathlib.Path]:
+        """Save OBJ, MTL, and texture PNG files for this geometry."""
+        mtl_filename = pathlib.Path(filename).with_suffix(".mtl").name
+        export = self.create_textured_obj(
+            mtl_filename=mtl_filename,
+            texture_folder=texture_folder,
+        )
+        return save_textured_obj_export(export, filename, folderpath)
+
+    def create_dae(
+        self,
+        include_textures: bool = True,
+        texture_folder: str = "textures",
+        animated_texture_frames: TextureAnimationFrames | None = None,
+        animation_frame_duration: int = 4,
+    ) -> Collada:
         """Creates a dae file out of the geometry data
 
         Returns:
             Collada: dae file
         """
+        if include_textures:
+            return self.create_textured_dae(
+                texture_folder,
+                animated_texture_frames=animated_texture_frames,
+                animation_frame_duration=animation_frame_duration,
+            ).dae
+        return self._create_geometry_only_dae()
+
+    def _create_geometry_only_dae(self) -> Collada:
+        """Creates a DAE file with geometry and vertex colors only."""
         mesh = Collada()
         
         vertex_data = list()
@@ -204,18 +326,18 @@ class GeometryData(BaseData):
         src_vertices = source.FloatSource("geo-vertices", numpy_array(vertex_data), ('X', 'Y', 'Z'))
         src_vertices_colour = source.FloatSource('vertex-colours', numpy_array(vertex_colour_data), ('R', 'G', 'B', 'A'))
         
-        # Create a geometry with the data points
-        geom = geometry.Geometry(mesh, "geometry0", "map", [src_vertices, src_vertices_colour])
-        mesh.geometries.append(geom)
-        
-        # Create a triangle set and append it to the geometry
-        triset = geom.createTriangleSet(numpy_array(triangle_data), input_list, "vertex-material")
-        geom.primitives.append(triset)
-
         # The input list is used to define the vertices and colours 
         input_list = source.InputList()
         input_list.addInput(0, 'VERTEX', "#geo-vertices")
         input_list.addInput(0, 'COLOR', '#vertex-colours')
+
+        # Create a geometry with the data points
+        geom = geometry.Geometry(mesh, "geometry0", "map", [src_vertices, src_vertices_colour])
+        mesh.geometries.append(geom)
+
+        # Create a triangle set and append it to the geometry
+        triset = geom.createTriangleSet(numpy_array(triangle_data), input_list, "vertex-material")
+        geom.primitives.append(triset)
         
         # Create the phong effect and material using the vertex colours
         effect = material.Effect('vertex-effect', [], 'phong', diffuse=src_vertices_colour)
@@ -232,12 +354,60 @@ class GeometryData(BaseData):
         
         return mesh
         
-    def save_to_dae(self, filename: str, folderpath: str = ".") -> None:
+    def save_to_dae(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = True,
+        texture_folder: str = "textures",
+        animated_texture_frames: TextureAnimationFrames | None = None,
+        animation_frame_duration: int = 4,
+    ) -> list[pathlib.Path]:
         """Save geometry data to dae format
 
         Args:
             filename (str): Name of dae file
             folderpath (str, optional): Folder path to save dae to. Defaults to ".".
+            include_textures (bool, optional): Whether to export DAE materials and
+                texture files alongside the DAE. Defaults to True.
+            texture_folder (str, optional): Folder for exported texture images
+                when include_textures is True. Defaults to "textures".
         """
+        if include_textures:
+            export = self.create_textured_dae(
+                texture_folder=texture_folder,
+                animated_texture_frames=animated_texture_frames,
+                animation_frame_duration=animation_frame_duration,
+            )
+            return save_textured_dae_export(export, filename, folderpath)
+
         filepath = pathlib.Path(folderpath, filename)
-        self.create_dae().write(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        self._create_geometry_only_dae().write(filepath)
+        return [filepath]
+
+    def save_to_gltf(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = True,
+        texture_folder: str = "textures",
+    ) -> list[pathlib.Path]:
+        """Save geometry data to glTF format."""
+        binary_filename = pathlib.Path(filename).with_suffix(".bin").name
+        export = self.create_textured_gltf(
+            binary_filename=binary_filename,
+            texture_folder=texture_folder,
+            include_textures=include_textures,
+        )
+        return save_textured_gltf_export(export, filename, folderpath)
+
+    def save_to_glb(
+        self,
+        filename: str,
+        folderpath: str = ".",
+        include_textures: bool = True,
+    ) -> list[pathlib.Path]:
+        """Save geometry data to binary glTF format."""
+        export = self.create_textured_glb(include_textures=include_textures)
+        return save_textured_glb_export(export, filename, folderpath)

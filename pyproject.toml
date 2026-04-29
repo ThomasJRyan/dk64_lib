@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 # [tool.setuptools]
-# packages = ["dk64_lib", "dk64_lib.components"]
+# packages = ["dk64_lib", "dk64_lib.f3dex2"]
 
 # [tool.setuptools.packages]
 # find = {}
@@ -23,4 +23,4 @@ dependencies = [
 
 # [tool.setuptools.package-dir]
 # dk64_lib = "dk64_lib"
-# "dk64_lib.components" = "components"
+# "dk64_lib.f3dex2" = "f3dex2"

@@ -8,10 +8,10 @@ from dk64_lib.constants import RELEASE_SPRITES, KIOSK_SPRITES
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class _Sprite:
     position: int
-    data: bytes
+    data: int
     sprite: str
     data_type: str = "sprite"
 
@@ -19,7 +19,7 @@ class _Sprite:
         return self.sprite
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class _Text:
     start: int
     size: int
@@ -27,22 +27,22 @@ class _Text:
     text: str | None = None
 
     def __repr__(self):
-        return self.text
+        return self.text or ""
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class _TextLineFragment:
     block_start: str
     section2count: int
     section3count: int
     offset: int
-    text: list[Union["_Text", "_Sprite"]]
+    text: tuple[Union["_Text", "_Sprite"], ...]
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class _TextLine:
     arr: bytes
-    sentence_fragments: list["_TextLineFragment"]
+    sentence_fragments: tuple["_TextLineFragment", ...]
     section1count: int
     section2count: int
     section3count: int
@@ -87,7 +87,7 @@ class TextData(BaseData):
         offset: int,
         bit_shift: int,
         is_text: bool,
-    ) -> list[Union["_Text", "_Sprite"]]:
+    ) -> tuple[Union["_Text", "_Sprite"], ...]:
         """Object method - Generates a list of Texts and Sprites, used to form the various sentences in the game
 
         Returns:
@@ -111,11 +111,11 @@ class TextData(BaseData):
                     position=sprite_pos, data=sprite_data, sprite=sprite
                 )
             ret_list.append(data_object)
-        return ret_list
+        return tuple(ret_list)
 
     def _generate_blocks(
         self, fh: FileIO, section_count: int, data_start: int
-    ) -> tuple[int, list["_TextLineFragment"]]:
+    ) -> tuple[int, tuple["_TextLineFragment", ...]]:
         """Object method - Generates a list of Blocks, each containing a line of text and sprites
 
         Returns:
@@ -148,9 +148,9 @@ class TextData(BaseData):
             )
             block_start = block_start + 2 + offset + (bit_shift * sec3ct) + 4
 
-        return block_start, ret_list
+        return block_start, tuple(ret_list)
 
-    def _generate_block_data(self, fh: FileIO) -> tuple[int, list["_TextLine"]]:
+    def _generate_block_data(self, fh: FileIO) -> tuple[int, tuple["_TextLine", ...]]:
         """Object method - Generates a list of BlockData objects containing the various blocks of text
 
         Returns:
@@ -197,11 +197,27 @@ class TextData(BaseData):
             # Start off at the end of our current section for the next iteration
             data_start += block_start
 
-        return data_start, ret_list
+        return data_start, tuple(ret_list)
+
+    def _parse_text_item(
+        self, fh: FileIO, data_start: int, item: Union["_Text", "_Sprite"]
+    ) -> Union["_Text", "_Sprite"]:
+        if isinstance(item, _Text):
+            item_offset = item.start + data_start + 2
+            return _Text(
+                start=item.start,
+                size=item.size,
+                data_type=item.data_type,
+                text=get_bytes(fh, item.size, item_offset).decode(),
+            )
+        return item
 
     def _parse_text(
-        self, fh: FileIO, data_start: int, text_list: list[Union["_Text", "_Sprite"]]
-    ):
+        self,
+        fh: FileIO,
+        data_start: int,
+        text_list: tuple[Union["_Text", "_Sprite"], ...],
+    ) -> tuple[Union["_Text", "_Sprite"], ...]:
         """Object method - Parse the texts
 
         Args:
@@ -209,15 +225,15 @@ class TextData(BaseData):
             data_start (int): Where the text data begins
             block_data_list (list[TextData.BlockData]): List of texts and sprites
         """
-        for item in text_list:
-            if isinstance(item, _Text):
-                item_offset = item.start + data_start + 2
-                item.text = get_bytes(fh, item.size, item_offset).decode()
-            self._data.append(item)
+        parsed_items = tuple(
+            self._parse_text_item(fh, data_start, item) for item in text_list
+        )
+        self._data.extend(parsed_items)
+        return parsed_items
 
     def _parse_blocks(
-        self, fh: FileIO, data_start: int, block_list: list["_TextLineFragment"]
-    ):
+        self, fh: FileIO, data_start: int, block_list: tuple["_TextLineFragment", ...]
+    ) -> tuple["_TextLineFragment", ...]:
         """Object method - Parse the blocks
 
         Args:
@@ -225,12 +241,20 @@ class TextData(BaseData):
             data_start (int): Where the text data begins
             block_data_list (list[TextData.BlockData]): List of blocks
         """
-        for block in block_list:
-            self._parse_text(fh, data_start, block.text)
+        return tuple(
+            _TextLineFragment(
+                block_start=block.block_start,
+                section2count=block.section2count,
+                section3count=block.section3count,
+                offset=block.offset,
+                text=self._parse_text(fh, data_start, block.text),
+            )
+            for block in block_list
+        )
 
     def _parse_block_data(
-        self, fh: FileIO, data_start: int, block_data_list: list["_TextLine"]
-    ):
+        self, fh: FileIO, data_start: int, block_data_list: tuple["_TextLine", ...]
+    ) -> tuple["_TextLine", ...]:
         """Object method - Parse the block data
 
         Args:
@@ -238,8 +262,19 @@ class TextData(BaseData):
             data_start (int): Where the text data begins
             block_data_list (list[TextData.BlockData]): List of block datas
         """
-        for block_data in block_data_list:
-            self._parse_blocks(fh, data_start, block_data.sentence_fragments)
+        return tuple(
+            _TextLine(
+                arr=block_data.arr,
+                sentence_fragments=self._parse_blocks(
+                    fh, data_start, block_data.sentence_fragments
+                ),
+                section1count=block_data.section1count,
+                section2count=block_data.section2count,
+                section3count=block_data.section3count,
+                data_start=block_data.data_start,
+            )
+            for block_data in block_data_list
+        )
 
     def _parse_data(self, fh: FileIO):
         """Object method - Runs the methods to generate and parse the block data
@@ -248,5 +283,4 @@ class TextData(BaseData):
             fh (FileIO): The temporary file handler
         """
         data_start, block_data_list = self._generate_block_data(fh)
-        self._parse_block_data(fh, data_start, block_data_list)
-        self.text_lines = block_data_list
+        self.text_lines = self._parse_block_data(fh, data_start, block_data_list)

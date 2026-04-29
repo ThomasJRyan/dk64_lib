@@ -1,13 +1,13 @@
+from dataclasses import dataclass
+
 from dk64_lib.f3dex2 import commands
 
 
+@dataclass(frozen=True, slots=True)
 class Triangle:
-    __slots__ = ("v1", "v2", "v3")
-
-    def __init__(self, v1: int, v2: int, v3: int):
-        self.v1 = v1
-        self.v2 = v2
-        self.v3 = v3
+    v1: int
+    v2: int
+    v3: int
 
     def __repr__(self):
         return f"{self.__class__.__qualname__}({self.v1}, {self.v2}, {self.v3})"
