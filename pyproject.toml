@@ -12,6 +12,9 @@ dependencies = [
     "pycollada",
 ]
 
+[project.urls]
+Source = "https://github.com/ThomasJRyan/dk64_lib"
+
 # [tool.setuptools]
 # packages = ["dk64_lib", "dk64_lib.f3dex2"]
 
