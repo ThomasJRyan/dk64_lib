@@ -651,6 +651,48 @@ class TextureExportTest(unittest.TestCase):
         )
         self.assertIn("KHR_materials_unlit", gltf["extensionsUsed"])
 
+    def test_gltf_exporter_writes_linear_vertex_colors(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        display_list = _textured_triangle_display_list(
+            texture_index=0,
+            fmt=0,
+            size=2,
+            width=2,
+            height=2,
+            vertex_colors=(
+                (128, 64, 32, 255),
+                (255, 255, 255, 255),
+                (0, 0, 0, 128),
+            ),
+        )
+
+        export = TexturedGltfExporter(texture_data).export([display_list])
+        gltf = json.loads(export.gltf_data)
+        primitive = gltf["meshes"][0]["primitives"][0]
+
+        color_values = _gltf_accessor_floats(
+            gltf,
+            export.binary_data,
+            primitive["attributes"]["COLOR_0"],
+        )
+
+        self.assertAlmostEqual(color_values[0], 0.2158605)
+        self.assertAlmostEqual(color_values[1], 0.0512695)
+        self.assertAlmostEqual(color_values[2], 0.0144438)
+        self.assertEqual(color_values[3], 1.0)
+        self.assertEqual(color_values[4:8], (1.0, 1.0, 1.0, 1.0))
+        self.assertEqual(color_values[8:11], (0.0, 0.0, 0.0))
+        self.assertAlmostEqual(color_values[11], 128 / 255)
+
     def test_glb_exporter_embeds_texture_and_alpha_material(self):
         texture_data = [
             SimpleNamespace(

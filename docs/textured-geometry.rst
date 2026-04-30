@@ -195,12 +195,16 @@ files even though color support is not part of the oldest Wavefront OBJ
 specification. Alpha is available in the parsed ``Vertex`` object and in glTF,
 GLB, and DAE export, but OBJ export writes RGB only.
 
-glTF and GLB export write ``COLOR_0`` accessors with normalized RGBA values.
-DAE export writes a ``COLOR`` source with the same normalized RGBA values. This
-keeps the original vertex alpha available to importers that expose vertex color
-data. Textured materials still use the decoded texture as the diffuse map; the
-vertex color stream is exported as geometry data rather than baked into the
-PNGs.
+glTF and GLB export write ``COLOR_0`` accessors as RGBA vertex colors. RGB
+channels are converted from DK64's byte values into linear floats before export,
+because glTF vertex colors are material multipliers rather than sRGB texture
+samples. Alpha is normalized directly from ``0..255`` to ``0.0..1.0``. This
+prevents mid-range vertex colors from rendering too bright in glTF viewers such
+as Blender while preserving vertex alpha for blend effects.
+
+DAE export currently writes a ``COLOR`` source with normalized RGBA values.
+Textured materials still use the decoded texture as the diffuse map; the vertex
+color stream is exported as geometry data rather than baked into the PNGs.
 
 UV Mapping
 ----------

@@ -115,9 +115,10 @@ Pointer entries are written as:
 
 The pointer file contains the target geometry table index.
 
-OBJ exports include RGB vertex colors on ``v`` lines. GLB, glTF, and DAE
-exports include RGBA vertex colors. Textured groups include UV coordinates and
-material bindings. OBJ writes ``usemtl`` statements and MTL ``map_Kd`` entries;
+OBJ exports include RGB vertex colors on ``v`` lines. GLB and glTF export
+linearized RGBA ``COLOR_0`` vertex colors, while DAE exports normalized RGBA
+vertex colors. Textured groups include UV coordinates and material bindings.
+OBJ writes ``usemtl`` statements and MTL ``map_Kd`` entries;
 GLB and glTF write glTF PBR materials with ``KHR_materials_unlit`` and diffuse
 texture references; DAE writes material effects with diffuse texture references.
 Textures with transparent pixels also get dedicated ``*_alpha.png`` opacity

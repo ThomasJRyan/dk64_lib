@@ -1791,9 +1791,9 @@ def _gltf_add_color_accessor(
     payload = b"".join(
         struct.pack(
             "<ffff",
-            vertex.xr / 255,
-            vertex.yg / 255,
-            vertex.zb / 255,
+            _srgb_byte_to_linear_float(vertex.xr),
+            _srgb_byte_to_linear_float(vertex.yg),
+            _srgb_byte_to_linear_float(vertex.zb),
             vertex.alpha / 255,
         )
         for vertex in vertices
@@ -1807,6 +1807,13 @@ def _gltf_add_color_accessor(
         accessor_type="VEC4",
         target=_GLTF_ARRAY_BUFFER,
     )
+
+
+def _srgb_byte_to_linear_float(value: int) -> float:
+    encoded = value / 255
+    if encoded <= 0.04045:
+        return encoded / 12.92
+    return ((encoded + 0.055) / 1.055) ** 2.4
 
 
 def _gltf_add_texcoord_accessor(
