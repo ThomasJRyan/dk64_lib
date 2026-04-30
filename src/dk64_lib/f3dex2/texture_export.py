@@ -762,6 +762,7 @@ class TexturedGltfExporter(TexturedObjExporter):
                 for group in groups
             ), tuple()
 
+        groups = _drop_untextured_duplicate_triangles(groups)
         textures = tuple(
             texture
             for texture in dict.fromkeys(group.texture for group in groups)
@@ -772,6 +773,59 @@ class TexturedGltfExporter(TexturedObjExporter):
             for texture in textures
         )
         return groups, texture_plans
+
+
+def _drop_untextured_duplicate_triangles(
+    groups: tuple[_MeshGroup, ...],
+) -> tuple[_MeshGroup, ...]:
+    textured_triangles = {
+        _triangle_position_key(group, triangle)
+        for group in groups
+        if group.texture is not None
+        for triangle in group.triangles
+    }
+    if not textured_triangles:
+        return groups
+
+    filtered_groups = list()
+    for group in groups:
+        if group.texture is not None:
+            filtered_groups.append(group)
+            continue
+
+        triangles = tuple(
+            triangle
+            for triangle in group.triangles
+            if _triangle_position_key(group, triangle) not in textured_triangles
+        )
+        if triangles:
+            filtered_groups.append(
+                _MeshGroup(
+                    vertices=group.vertices,
+                    triangles=triangles,
+                    texture=group.texture,
+                    display_list_offset=group.display_list_offset,
+                )
+            )
+
+    return tuple(filtered_groups)
+
+
+def _triangle_position_key(
+    group: _MeshGroup,
+    triangle: Triangle,
+) -> tuple[tuple[int, int, int], ...]:
+    return tuple(
+        sorted(
+            (
+                group.vertices[vertex_index].x,
+                group.vertices[vertex_index].y,
+                group.vertices[vertex_index].z,
+            )
+            for vertex_index in (triangle.v1, triangle.v2, triangle.v3)
+            if 0 <= vertex_index < len(group.vertices)
+        )
+    )
 
 
 def decode_texture(

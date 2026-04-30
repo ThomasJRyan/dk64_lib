@@ -728,6 +728,57 @@ class TextureExportTest(unittest.TestCase):
             {"POSITION", "COLOR_0", "TEXCOORD_0"},
         )
 
+    def test_glb_exporter_drops_untextured_duplicate_triangles(self):
+        texture_data = [
+            SimpleNamespace(
+                raw_data=(
+                    _rgba16(255, 0, 0)
+                    + _rgba16(0, 255, 0)
+                    + _rgba16(0, 0, 255)
+                    + _rgba16(255, 255, 255)
+                )
+            )
+        ]
+        image_type = (0 << 5) | (2 << 3)
+        commands = (
+            _g_texture(level=3)
+            + _words(0xFD000000 | (image_type << 16), 0)
+            + _settile(fmt=0, size=2, tile=7)
+            + _words(0xF3000000, 0x07000000)
+            + _settile(fmt=0, size=2, tile=0)
+            + _settilesize(tile=0, width=2, height=2)
+            + b"\x01\x00\x30\x06\x00\x00\x00\x00"
+            + b"\x05\x00\x02\x04\x00\x00\x00\x00"
+            + _g_texture(level=0, on=0)
+            + b"\x01\x00\x30\x06\x00\x00\x00\x30"
+            + b"\x05\x00\x02\x04\x00\x00\x00\x00"
+            + b"\xdf\x00\x00\x00\x00\x00\x00\x00"
+        )
+        display_list = DisplayList(
+            raw_data=commands,
+            raw_vertex_data=(
+                _vertex(0, 0, 0, 0, 0)
+                + _vertex(1, 0, 0, 64, 0)
+                + _vertex(0, 1, 0, 0, 64)
+                + _vertex(0, 0, 0, 0, 0)
+                + _vertex(1, 0, 0, 0, 0)
+                + _vertex(0, 1, 0, 0, 0)
+            ),
+            vertex_pointer=0,
+            offset=0,
+        )
+
+        export = TexturedGltfExporter(texture_data).export_glb([display_list])
+        gltf, _bin_chunk = _glb_chunks(export.data)
+
+        self.assertEqual(len(gltf["meshes"]), 1)
+        primitive = gltf["meshes"][0]["primitives"][0]
+        self.assertEqual(
+            gltf["materials"][primitive["material"]]["name"],
+            "tex_0_pal_none_f0_s2_2x2",
+        )
+        self.assertIn("TEXCOORD_0", primitive["attributes"])
+
     def test_glb_exporter_blends_materials_with_vertex_alpha(self):
         texture_data = [
             SimpleNamespace(
