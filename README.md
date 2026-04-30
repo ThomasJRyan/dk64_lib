@@ -107,3 +107,11 @@ rom.geometry_tables[0].save_to_obj("0.obj", include_textures=False)
 - Extract models and convert to objs
 - Extract audio and convert to some sort of audio file
 - Extract everything else
+
+## Credits
+
+This project builds on the combined DK64 research, documentation, and tooling
+efforts of many people over many years. A key reference is the shared
+[DK64 documentation spreadsheet](https://docs.google.com/spreadsheets/d/18gBPArJ2abdR3P9BeQw3OD_PLAjITFaE3r82bWUdC8U).
+
+Special thanks to Ballaam, GloriousLiar, 2dos, Bismuth, and Zeldaboy14.
