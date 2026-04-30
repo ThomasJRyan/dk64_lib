@@ -8,7 +8,32 @@ from re import sub
 
 from typing import Literal, Generator
 
-from dk64_lib.data_types import TextureData, TextData, CutsceneData, GeometryData
+from dk64_lib.data_types import (
+    ActorGeometryData,
+    AnimationCodeData,
+    AnimationData,
+    AutowalkData,
+    CritterData,
+    CutsceneData,
+    DKTVInputData,
+    ExitData,
+    FloorCollisionData,
+    GeometryData,
+    InstanceScriptData,
+    MidiMusicData,
+    ModelTwoGeometryData,
+    PathData,
+    RaceCheckpointData,
+    SetupData,
+    SpawnerData,
+    StubTableData,
+    TextData,
+    TextureData,
+    TriggerData,
+    UnknownTable19Data,
+    UncompressedFileSizeData,
+)
+from dk64_lib.data_types.table_stubs import STUB_TABLE_DATA_TYPES
 from dk64_lib.f3dex2.texture_export import (
     TextureAnimationFrames,
     TextureImageFile,
@@ -20,7 +45,33 @@ from dk64_lib.constants import MAPS
 from dk64_lib.file_io import get_bytes, get_char, get_long, get_short
 
 
-RAW_EXPORT_TABLES = (1, 7, 8, 12, 14, 25)
+RAW_EXPORT_TABLES = (
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+)
 GUESSED_TEXTURE_TABLES = (7, 14, 25)
 # Size guesses adapted from dk64-hacking-scripts' texture_size_guesser.py.
 TEXTURE_SIZE_GUESSES = {
@@ -460,6 +511,75 @@ class Rom:
         for table_data in self.generate_rom_table_data([7, 14, 25]):
             texture_data.append(TextureData(**table_data))
         return texture_data
+
+    @cache
+    def get_stub_table_data(self, table_id: int) -> list[StubTableData]:
+        """Fetch provisional raw data wrappers for a named but unparsed table."""
+        try:
+            data_class = STUB_TABLE_DATA_TYPES[table_id]
+        except KeyError:
+            raise ValueError(f"Table {table_id} does not have a stub data type")
+        return [
+            data_class(**table_data)
+            for table_data in self.generate_rom_table_data([table_id])
+        ]
+
+    def get_midi_music_data(self) -> list[MidiMusicData]:
+        return self.get_stub_table_data(0)
+
+    def get_wall_collision_data(self) -> list[WallCollisionData]:
+        return self.get_stub_table_data(2)
+
+    def get_floor_collision_data(self) -> list[FloorCollisionData]:
+        return self.get_stub_table_data(3)
+
+    def get_model_two_geometry_data(self) -> list[ModelTwoGeometryData]:
+        return self.get_stub_table_data(4)
+
+    def get_actor_geometry_data(self) -> list[ActorGeometryData]:
+        return self.get_stub_table_data(5)
+
+    def get_setup_data(self) -> list[SetupData]:
+        return self.get_stub_table_data(9)
+
+    def get_instance_script_data(self) -> list[InstanceScriptData]:
+        return self.get_stub_table_data(10)
+
+    def get_animation_data(self) -> list[AnimationData]:
+        return self.get_stub_table_data(11)
+
+    def get_animation_code_data(self) -> list[AnimationCodeData]:
+        return self.get_stub_table_data(13)
+
+    def get_path_data(self) -> list[PathData]:
+        return self.get_stub_table_data(15)
+
+    def get_spawner_data(self) -> list[SpawnerData]:
+        return self.get_stub_table_data(16)
+
+    def get_dktv_input_data(self) -> list[DKTVInputData]:
+        return self.get_stub_table_data(17)
+
+    def get_trigger_data(self) -> list[TriggerData]:
+        return self.get_stub_table_data(18)
+
+    def get_unknown_table_19_data(self) -> list[UnknownTable19Data]:
+        return self.get_stub_table_data(19)
+
+    def get_autowalk_data(self) -> list[AutowalkData]:
+        return self.get_stub_table_data(21)
+
+    def get_critter_data(self) -> list[CritterData]:
+        return self.get_stub_table_data(22)
+
+    def get_exit_data(self) -> list[ExitData]:
+        return self.get_stub_table_data(23)
+
+    def get_race_checkpoint_data(self) -> list[RaceCheckpointData]:
+        return self.get_stub_table_data(24)
+
+    def get_uncompressed_file_size_data(self) -> list[UncompressedFileSizeData]:
+        return self.get_stub_table_data(26)
 
     @cache
     def get_geometry_texture_data(self) -> list[TextureData]:

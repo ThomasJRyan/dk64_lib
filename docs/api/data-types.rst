@@ -35,3 +35,10 @@ Cutscenes
 .. automodule:: dk64_lib.data_types.cutscene
    :members:
    :show-inheritance:
+
+Table Stubs
+-----------
+
+.. automodule:: dk64_lib.data_types.table_stubs
+   :members:
+   :show-inheritance:

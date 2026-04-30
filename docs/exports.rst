@@ -210,7 +210,10 @@ Raw Tables
 
 .. code-block:: python
 
-   paths = rom.export_assets("dk64_export/assets", tables=(1, 7, 8, 12, 14, 25))
+   paths = rom.export_assets("dk64_export/assets", tables=(0, 1, 2, 3, 4, 5))
 
 Raw asset exports use the same table folder and offset naming convention as
-texture exports.
+texture exports. By default this includes all tables that are currently parsed
+or have a provisional stub label: ``0``, ``1``, ``2``, ``3``, ``4``, ``5``,
+``7``, ``8``, ``9``, ``10``, ``11``, ``12``, ``13``, ``14``, ``15``, ``16``,
+``17``, ``18``, ``19``, ``21``, ``22``, ``23``, ``24``, ``25``, and ``26``.
